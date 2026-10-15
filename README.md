@@ -57,6 +57,22 @@ pnpm build        # next build
 uv run --project apps/api deaiify doctor   # 服务侧自检（存储连通性）
 ```
 
+API 示例（OpenAPI 文档在 `http://127.0.0.1:8000/docs`）：
+
+```bash
+# AI 味评分——纯本地，不需要任何模型 key
+curl -s http://127.0.0.1:8000/api/v1/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"text":"综上所述，人工智能具有重要意义。首先，它提升效率；其次，它降低成本。"}'
+
+# 一键改写——需先在 .env 配置模型（DEAIIFY_OPENAI_BASE_URL / _API_KEY）
+curl -s http://127.0.0.1:8000/api/v1/rewrite \
+  -H "Content-Type: application/json" \
+  -d '{"text":"……原文……","styles":["natural","concise"],"model":{"name":"你的模型名"}}'
+```
+
+> PowerShell 提示：内联 JSON 引号易被 curl 误解析，建议把 body 存成 UTF-8 文件后用 `--data-binary "@body.json"`。
+
 ## 架构
 
 ```

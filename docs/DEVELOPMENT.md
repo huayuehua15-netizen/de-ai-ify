@@ -201,6 +201,7 @@ docker info        # 可选：不通则只用 lite 模式
 | ruff | 0.17.x | Lint + Format |
 
 **关键设计**：`openai` SDK 通过 `base_url` 即可覆盖所有 OpenAI 兼容端点，因此适配层只需**三个实现**：`OpenAIProvider`（官方+兼容端点）、`AnthropicProvider`、`OllamaProvider`（原生 `/api/chat`，用于列模型/拉模型）。
+**注意**：openai 3.x / anthropic 1.x 已依赖新一代 `httpx2` HTTP 栈，与 `respx`（仅适配老 `httpx`）不兼容——测试策略见 §16 R11；`httpx` 0.28 仍用于我们自己的 Ollama 客户端。
 
 ### 3.3 存储：PostgreSQL + Redis 标准栈，SQLite 零配置备选
 
@@ -889,18 +890,20 @@ jobs:
 
 **交付**：分句分词、8 个 detector、权重与总分、findings 定位、内置四层词库（≥800 条）、corpus ≥50+50 条、基准脚本。
 **验收**：
-- [ ] corpus 回归全绿（AI ≥65 / 人写 ≤35）；
-- [ ] 1 万字 analyze 实测 < 100ms；
-- [ ] `text[start:end]==matched` 单测通过；
-- [ ] 任一 finding 的 reason/suggestion 是完整人话。
+- [x] corpus 回归全绿（AI ≥65 / 人写 ≤35）；
+- [x] 1 万字 analyze 实测 < 100ms；
+- [x] `text[start:end]==matched` 单测通过；
+- [x] 任一 finding 的 reason/suggestion 是完整人话。
 
 ### M2 API + 改写（3–4 天）
 
 **交付**：§7 全端点、三 provider 适配层、风格矩阵 6 种、质量闸门、SSE、错误码与限流、OpenAPI 文档。
 **验收**：
 - [ ] `curl` 走通 analyze/rewrite/stream 三端点；
-- [ ] respx 模拟超时/429/5xx 用例全过；
-- [ ] 改写后 Δscore 与专有名词召回校验生效（故意构造劣质改写能被闸门拦下）。
+- [x] respx 模拟超时/429/5xx 用例全过；
+- [x] 改写后 Δscore 与专有名词召回校验生效（故意构造劣质改写能被闸门拦下）。
+
+> **实现注记（2026-10-15）**：三端点已真机 curl 验证传输层（analyze 完整响应 / rewrite 未配置→503 统一错误体 / stream SSE `start→error→done` 帧）；**首个方框待补**：等模型凭据到位后用真实改写过一遍 curl。测试口径：respx 用例打 httpx 系 Ollama 路径，openai 路径用 `httpx2.MockTransport` 注入（§16 R11），两路合计 23 用例全绿；闸门重试（流式 + 非流式）均覆盖。
 
 ### M3 Web 主流程（5–7 天）
 
@@ -943,6 +946,7 @@ jobs:
 | R8 | 词库版权/语料许可争议 | 低 | 高 | 内置词库自撰 + 社区 PR 需声明来源；corpus 只收可再许可文本 |
 | R9 | 服务商 SDK 大版本破坏（openai 3.x、anthropic 1.x） | 中 | 中 | 适配层隔离 SDK；契约测试锁行为 |
 | R10 | 匿名滥用（若未来公开 demo） | 低 | 中 | v1 不提供公共 demo；限流默认 60/min |
+| R11 | SDK 生态断层：openai 3.x / anthropic 1.x 依赖 `httpx2`，`respx`（仅适配老 `httpx`）无法拦截其流量 | 已发生 | 中 | 错误归一化的 respx 用例改打 httpx 系 Ollama 路径；openai 路径经 provider 预留的 `http_client` 注入口使用 `httpx2.MockTransport`；持续关注 respx 的 httpx2 适配 |
 
 ---
 
