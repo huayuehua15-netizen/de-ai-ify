@@ -1,0 +1,80 @@
+# Human-written English samples: casual, concrete, MIT-licensed originals.
+# Separated by a line containing only ---. Used by corpus regression (human mean ≤ 35).
+
+I quit my job last March after 14 months of burnout. The weird part? I didn't have a plan. I just knew I couldn't open Slack one more morning. Three weeks later I landed a contract gig paying 20% more. Sometimes jumping is the plan.
+---
+The build failed at 2:47 AM. Turns out I'd typed a semibold where a semicolon should go. I stared at that line for ten minutes before it clicked. Went to bed angry, fixed it in four minutes the next morning.
+---
+We drove four hours to the coast and it rained the entire weekend. The kids still talk about it — apparently getting soaked in the ocean is "the best thing ever." We paid $340 for the rental and would do it again tomorrow.
+---
+That noodle shop on 5th has been run by the same guy for 19 years. He'll snap at you if you order wrong, but the beef noodles cost $4.50 and the broth takes eight hours. I've been going there since college.
+---
+My mom figured out video calling at 68. Now she checks in every single day. Last week I missed one call and she blew up my phone — 11 messages in a row. I love her, but I'm keeping that phone on loud from now on.
+---
+I don't buy the "habits take 21 days" line. I tried six times and the longest stretch was 34 days before I fell off. What finally worked was tiny: floss one tooth. Sounds dumb, but I haven't missed a night in four months.
+---
+The product manager sent a three-page doc that never said what the API should return. So I asked five questions: fields, types, defaults, timeout behavior, error codes. Ten minutes later we had it. The doc was never the point.
+---
+I used to memorize vocabulary lists and always, always quit at "abandon." Now I learn from TV subtitles instead. Slower, sure, but I can actually say "you've got to be kidding me" without thinking about it.
+---
+The channel hit 100k subscribers yesterday — after three years and 214 videos. The creator cried on camera and the chat just spammed hearts for five straight minutes. I've been there. The grind is real and it's ugly.
+---
+Dave cleared his desk at 4 PM and was gone by 5:30. Didn't even take the succulent on his monitor stand. That night he posted four words on WeChat: "On to the next one." Six years, four words. That's about right.
+---
+They asked why I wanted to work here. The honest answer: I applied to three companies and you were the only one that replied. We both laughed. I start on the 15th.
+---
+My hometown had one decent mall ten years ago. Now there are three, four cinemas, and two bubble tea shops on the same street. You don't notice change until you leave and come back.
+---
+Writing tip that took me two rejections to learn: stop performing. My editor returned the draft twice and finally wrote one sentence — "talk like a person." That's been six years ago and I still hear it.
+---
+The ER at 3 AM is louder than any fish market. Last weekend I sat with my dad while a kid with alcohol poisoning took one bed and a gym bro with rhabdo took the other. The doctor didn't even look up: "You guys, take a night off."
+---
+My commuter bag finally died after three years. Zipper first, then the strap, then the bottom wore through. I couldn't throw it out — it had survived 273 subway rides and never lost anything.
+---
+Found a 2013 laptop while moving. It still boots. The 500GB drive is completely full and the desktop has 17 folders called "New Folder." I didn't delete a thing. Just shut it and put it back in the box.
+---
+Ignore the "sleep eight hours" dogma. Six hours and I'm sharp; ten and I've got a headache. It varies per person, so run your own experiment instead of taking someone else's rules as gospel.
+---
+The rice balls and fish balls at the corner store are never out of stock. The kelp knots are always gone. The clerk told me: "Whatever we get, we sell." Now I just call ahead and have her set some aside.
+---
+My dad repaired bicycles for 31 years and finally stopped last year. Not because nobody needed fixing — because nobody rode anymore. His toolbox still sits on the balcony, every wrench polished, gathering nothing but dust.
+---
+Rent is $2,100; the mortgage on the same building would be $6,400. That $4,300 gap buys me freedom to change cities whenever I want. It's less a financial calculation than an excuse I've gotten pretty good at defending.
+---
+Six months of running took my pace from 7:30 to 5:50 per kilometer. No coach, no $200 shoes — just four runs a week, five kilometers each. Now I catch myself eyeing staircases. That's the only real change.
+---
+Isn't it funny how you crave being grown-up when you're small and then miss it later? My mom calls it ingratitude. I call it memory with a filter. She didn't get the joke, but we both laughed anyway.
+---
+I've ridden the Shenzhen-to-Changsha high-speed train 47 times. Every time we pass Yueyang Tower I look up, even though I've never seen much of anything. Last trip I finally sat by the window and snapped a photo for my old team.
+---
+"Interviews are for rockets, the job is for tightening screws." I thought it was a joke until three months on the line proved it. Turns out we use exactly three steps from the first day of training. Everything else is theater.
+---
+Hard work without direction is just expensive motion. I learned that the year I spent 60 hours a week scaling a product nobody asked for. The direction came later; the invoice for that lesson already arrived.
+---
+Five years of renting taught me one thing: don't buy heavy furniture. I splurged on a $600 couch and sold it for $80 when I moved. Cheap lesson in retrospect, expensive at the time.
+---
+The server fell over at 3 PM last Tuesday. No alert fired — we found out when support's phone melted. The logs had been piling up for six months: 80GB of pure noise. The fix took 20 minutes; the embarrassment lasts longer.
+---
+My daughter asked me why clouds walk across the sky. I looked it up, found three answers, and gave her the simplest one: the wind pushes them. She thought about it and asked, "Doesn't the wind get tired?" Fair point, kid.
+---
+Launch day was quiet. No confetti, no meeting. At 9:30 PM I flipped the switch alone, watched the error rate sit at zero, and ordered barbecue. Fourteen months of work, one quiet moment. That's how I like it.
+---
+To save $4 on the subway I walked 15 minutes, then bought an $18 latte on the way. My brain cannot do math. The subway would've been faster and cheaper. I went back to the subway the next day.
+---
+My cousin failed the civil service exam twice before passing on the third try. She calls the first two "warm-ups," but she wouldn't have cleared the bar on attempt three without them. Pressure without practice doesn't sharpen anything.
+---
+Two people, one noodle stall, 130 bowls a day. We close at 1 AM, buy vegetables at 4:30, sleep at 7, wake at noon. Rent is $580 a month. Do we work hard? Ask me in ten years.
+---
+Nobody tells you that "gentle but firm" goes out the window when your kid pours milk over your head. Rules still matter. So does hugging it out afterward. Parenting advice is just weather — take it, don't live in it.
+---
+I write weekly reports like I'm negotiating: conclusion first, three bullets, one line about next week. My first draft was a wall of text and my manager sent it back twice. The template wasn't clever; it was just done.
+---
+Ever notice your friend list shrinks every year? It's not that anyone's mad — everyone's just busy. I've got two thousand contacts and maybe two people I'd actually call at midnight. That ratio used to bother me. Not anymore.
+---
+The driver talked the whole ride — tuition, gas prices, his kid's college entrance exam. Right before he dropped me off he said: "Relax, kid. Twelve years I've driven, and the anxious ones all end up stuck in the same traffic."
+---
+The centrifuge broke for two weeks so we took turns cranking it by hand. Yes, by hand. The professor called it "returning to fundamentals." We called it a workout. Either way, the paper didn't slip and my arms got thicker.
+---
+Back home for the holiday and there's a Luckin Coffee on Main Street now. The owner was in my graduating class. "Small town or not," he said, "400 cups a day." I did the math — that's more than the store I managed downtown.
+---
+This book sat on my nightstand for two years doing nothing. I finally stuffed it in my carry-on out of boredom and finished the whole thing on a two-hour flight. Go figure — all it took was being trapped with nothing else to do.

@@ -1,0 +1,21 @@
+# Template layer (en): one regex per line (compiled with IGNORECASE).
+# This layer is read line-by-line; no comma splitting.
+not only[^.!?\n]{1,60}but also
+either[^.!?\n]{1,40}or[^.!?\n]{1,40}
+it'?s not just[^.!?\n]{1,60}it'?s
+the (?:key|secret|beauty|power) of[^.!?\n]{0,30}(?:lies|is|lies in)
+plays? (?:an? )?(?:important|crucial|vital|key|significant|integral) role
+in (?:today'?s|the modern|today's)[^.!?\n]{1,40}
+as we (?:navigate|move|continue|embark)[^.!?\n]{1,50}
+whether you'?re[^.!?\n]{1,60}or
+imagine[^.!?\n]{1,50}
+let'?s (?:dive|explore|unpack|delve|take a closer look)
+the (?:bottom line|reality|truth) is
+it (?:is|'s) (?:no secret|clear that|evident that)
+at (?:its|the) core
+when it comes to[^.!?\n]{1,50}
+with (?:the|its) (?:help|power|ability) of
+a (?:quick|brief) (?:overview|look|glance) at
+one of the (?:most|biggest|greatest)
+(?:transform|elevate|revolutionize|disrupt) the way
+in the (?:realm|world|landscape|age|era) of

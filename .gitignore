@@ -20,6 +20,7 @@ __pycache__/
 htmlcov/
 .coverage
 coverage.xml
+jieba.cache
 
 # —— 密钥与运行数据 ——
 .env

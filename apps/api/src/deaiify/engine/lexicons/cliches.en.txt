@@ -1,0 +1,14 @@
+# Cliche layer (en): LLM-favorite stock phrases.
+# Entries separated by commas; `#` starts a comment.
+
+# —— stock openers & hedges ——
+it's important to note, it is important to note, it's worth noting, it is worth noting, it goes without saying, needless to say, as we all know, as is well known, in today's fast-paced world, in today's digital age, in this day and age, in an era of, in an age of, in the ever-evolving landscape, ever-changing landscape, rapidly evolving, at the end of the day, when it comes to, the fact of the matter, truth be told, when it comes down to it, if you will, so to speak, that being said, with that said, having said that, all things considered, all things considered
+
+# —— empty intensifiers & boosters ——
+game-changer, game-changing, cutting-edge, state-of-the-art, world-class, best-in-class, next-level, revolutionary, groundbreaking, transformative, unparalleled, remarkable, truly remarkable, absolutely essential, crucial, pivotal, vital, paramount, of paramount importance, cannot be overstated, can't be overstated, plays a vital role, plays a crucial role, plays a key role, plays an important role, instrumental in, key takeaway, key takeaways
+
+# —— bland abstractions ——
+a myriad of, a plethora of, a wide array of, a wide range of, a host of, countless, countless possibilities, endless possibilities, untapped potential, unlock the potential, unlock the power, harness the power, leverage the power, unleash the power, seamless, seamlessly, robust, holistic, multifaceted, comprehensive, comprehensive guide, ultimate guide, streamline, elevate, foster growth, foster collaboration, drive value, drive growth, add value, create value, deliver value, gain valuable insights, valuable insights, deeper understanding, rich tapestry, vibrant ecosystem, dynamic landscape, thriving ecosystem
+
+# —— journey / narrative cliches ——
+delve into, delve deeper, dive deep, dive in, let's dive, embark on a journey, embark upon, navigate the complexities, navigate the evolving, journey of discovery, transformative journey, testament to, stands as a testament, a beacon of, realm of, sphere of, world of, in the world of, buckle up, stay tuned, look no further, picture this, imagine a world, have you ever wondered, the bottom line is, in a nutshell, long story short, spoiler alert

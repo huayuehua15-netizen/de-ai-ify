@@ -15,6 +15,20 @@
 - **隐私模式**：评分纯本地完成，**默认不保存原文**，可一键清除；
 - **多入口**：Web、REST API、CLI、Docker 自托管，同一引擎行为一致。
 
+## 产品形态
+
+本项目开源的是**可自托管的完整应用**（不是我们运营的在线服务，也不是桌面客户端）。拿到仓库后在自己的机器/服务器上运行，得到一个网页应用：
+
+| 形态 | 说明 |
+|---|---|
+| 自托管 Web 应用 | `docker compose up -d` 或 `pnpm dev`，浏览器打开 `localhost:3000` |
+| REST API | 部署后调用 `/api/v1/*`，接入自己的写作流水线 |
+| CLI | `deaiify rewrite ./文稿/ --style natural`，批量处理 |
+| Docker 镜像 | GHCR 发布，拉取即部署 |
+
+**开箱即可评分**：AI 味评分与特征高亮为纯本地规则引擎，不依赖任何模型、不配 key 可用；**改写**功能需自备 OpenAI 兼容端点（key 填入环境变量）。
+v1 不做：多租户 SaaS、桌面客户端、浏览器插件、平台 Skill（完整非目标见 [docs/DEVELOPMENT.md §17.3](docs/DEVELOPMENT.md)）。
+
 ## 快速开始
 
 前置：Node ≥ 20.9、[pnpm](https://pnpm.io)、[uv](https://docs.astral.sh/uv/)；使用标准栈还需 Docker。
