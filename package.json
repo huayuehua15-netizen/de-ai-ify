@@ -1,0 +1,28 @@
+{
+  "name": "de-ai-ify",
+  "version": "0.1.0",
+  "private": true,
+  "description": "去 AI 味：可解释的 AI 文本评分与改写工具（Web / REST API / CLI，可完全自托管）",
+  "license": "MIT",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=20.9"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,green \"pnpm dev:api\" \"pnpm dev:web\"",
+    "dev:api": "uv run --project apps/api uvicorn deaiify.main:app --reload --port 8000",
+    "dev:web": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "start:web": "pnpm --filter web start",
+    "lint": "pnpm lint:web && pnpm lint:api",
+    "lint:web": "pnpm --filter web lint",
+    "lint:api": "uv run --project apps/api ruff check apps/api",
+    "format:api": "uv run --project apps/api ruff format apps/api",
+    "typecheck": "pnpm --filter web exec tsc --noEmit",
+    "test": "uv run --project apps/api pytest",
+    "check:env": "node scripts/check-env.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}

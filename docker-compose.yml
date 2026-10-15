@@ -1,0 +1,43 @@
+# de-ai-ify 标准栈（§3.3）：开发用 db+redis 子集，生产全栈见 docs/DEVELOPMENT.md §12.2
+# 本机镜像已备齐（postgres:15-alpine / redis:7-alpine），无需拉取 Docker Hub
+name: deaiify
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: deaiify-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: deaiify
+      POSTGRES_PASSWORD: deaiify
+      POSTGRES_DB: deaiify
+    ports:
+      - "127.0.0.1:5433:5432" # 避让标准 5432（§2.3 D）
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deaiify -d deaiify"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: deaiify-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6380:6379" # 6379 被其他项目容器占用（§2.3 D）
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # api / web 镜像构建在 M5 补充（docker/Dockerfile.api、docker/Dockerfile.web）
+
+volumes:
+  pgdata:
+  redisdata:

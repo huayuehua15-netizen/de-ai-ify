@@ -1,0 +1,44 @@
+# —— Node ——
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+*.tsbuildinfo
+.pnpm-store/
+
+# —— Python ——
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# —— 密钥与运行数据 ——
+.env
+.env.local
+.env.*.local
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# —— 测试报告 ——
+playwright-report/
+test-results/
+
+# —— 编辑器 / 系统 / 日志 ——
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.log
+npm-debug.log*
+pnpm-debug.log*

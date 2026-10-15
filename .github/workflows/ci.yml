@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - run: uv sync --frozen
+      - run: uv run ruff check src tests
+      - run: uv run ruff format --check src tests
+      - run: uv run pytest
+
+  # 标准栈集成：health 必须报告 db/redis ok（§3.3）
+  api-int:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: deaiify
+          POSTGRES_PASSWORD: deaiify
+          POSTGRES_DB: deaiify
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U deaiify -d deaiify"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DEAIIFY_DATABASE_URL: postgresql+asyncpg://deaiify:deaiify@127.0.0.1:5432/deaiify
+      DEAIIFY_REDIS_URL: redis://127.0.0.1:6379/0
+      DEAIIFY_EXPECT_SERVICES: "1"
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - run: uv sync --frozen
+      - run: uv run pytest
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter web lint
+      - run: pnpm --filter web exec tsc --noEmit
+      - run: pnpm --filter web build
+
+  # e2e（Playwright，M3）与 docker 镜像构建（M5）后续补充

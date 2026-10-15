@@ -1,0 +1,66 @@
+# de-ai-ify
+
+> 把 AI 草稿，改成人写的。
+> 可解释的 AI 文本评分与改写工具：检测并去除套话、空泛表达、结构重复与均匀句长——先评分解释，再一键改写，改完再验证。
+
+**状态：M0 脚手架已就绪**（开发文档见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)）
+
+## 特性（规划）
+
+- **AI 味评分**：八维度可解释评分（套话 / 句长均匀度 / 连接词 / 名词化 / 结构重复 / 模板句式 / 空泛度 / 个性化信号），逐条给出命中位置、原因与修改建议；
+- **多风格改写**：口语 / 简洁 / 学术 / 商务等多版本并行输出，改写后自动重评分展示 Δ；
+- **Diff 对比**：词级对比原稿与改写稿；
+- **自定义词库**：内置词库可停用，支持增删改与 CSV / JSON 导入导出；
+- **多模型接入**：OpenAI（含一切兼容端点）/ Anthropic / Ollama 统一适配层；
+- **隐私模式**：评分纯本地完成，**默认不保存原文**，可一键清除；
+- **多入口**：Web、REST API、CLI、Docker 自托管，同一引擎行为一致。
+
+## 快速开始
+
+前置：Node ≥ 20.9、[pnpm](https://pnpm.io)、[uv](https://docs.astral.sh/uv/)；使用标准栈还需 Docker。
+
+```bash
+# 1) 安装前端依赖
+pnpm install
+
+# 2) 启动存储（标准栈：PostgreSQL + Redis；无 Docker 可跳过，用 lite 模式见 .env.example）
+docker compose up -d
+
+# 3) 一条命令同时启动 API（:8000）与 Web（:3000）
+pnpm dev
+```
+
+打开 http://localhost:3000；API 文档在 http://127.0.0.1:8000/docs。
+首次会自动用 uv 创建 Python 3.13 虚拟环境并安装后端依赖。
+
+常用命令：
+
+```powershell
+pnpm check:env    # 环境自检
+pnpm lint         # ruff + eslint
+pnpm test         # pytest
+pnpm build        # next build
+uv run --project apps/api deaiify doctor   # 服务侧自检（存储连通性）
+```
+
+## 架构
+
+```
+apps/web    Next.js 16 (App Router + Tailwind 4) — Web 入口
+apps/api    FastAPI + SQLAlchemy 2.1 (Python 3.13, uv) — REST API / 评分引擎 / CLI
+```
+
+存储：**PostgreSQL 15 + Redis 7（Docker）为标准栈**；无 Docker 时可切 SQLite + 进程内队列的 lite 模式（见 [.env.example](.env.example)）。
+端口约定：PG `127.0.0.1:5433`、Redis `127.0.0.1:6380`（避开常见冲突）。
+
+## 隐私
+
+默认隐私模式：评分在本地完成，原文不会被保存到数据库，也不会写入日志。仅当你主动配置云端模型（如 OpenAI 兼容端点）时，原文才会随改写请求发送给该模型服务商。
+
+## 开发文档
+
+完整设计（评分算法规格、API、数据模型、里程碑）见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+
+## License
+
+[MIT](LICENSE)
