@@ -5,19 +5,50 @@ import json
 import time
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from deaiify.api.errors import ApiError
 from deaiify.api.schemas import RewriteRequest, RewriteResponse, RewriteVersionOut
 from deaiify.config import get_settings
+from deaiify.db.session import get_session
 from deaiify.engine import analyze
 from deaiify.providers.base import ProviderError
 from deaiify.providers.registry import get_provider
+from deaiify.services import history as history_svc
 from deaiify.services.rewrite import rewrite_one, stream_rewrite
 from deaiify.services.styles import get_style
 
 router = APIRouter()
+
+
+async def _record_history(
+    session: AsyncSession | None,
+    req: RewriteRequest,
+    *,
+    lang: str,
+    model: str,
+    style: str,
+    score_before: int,
+    score_after: int,
+) -> None:
+    """历史落库：失败不打断响应（never 模式只写哈希/分数，docs §8.2）。"""
+    if session is None:
+        return
+    try:
+        await history_svc.record(
+            session,
+            text=req.text,
+            lang=lang,
+            style=style,
+            model=model,
+            score_before=score_before,
+            score_after=score_after,
+            store_text=history_svc.should_store_text(req.store),
+        )
+    except Exception:  # noqa: BLE001 - 历史是非关键路径
+        pass
 
 
 async def _prepare(req: RewriteRequest) -> tuple[list[str], int, str, str, Any]:
@@ -67,7 +98,10 @@ def _outcomes_to_versions(outcomes) -> list[RewriteVersionOut]:
 
 
 @router.post("/rewrite", response_model=RewriteResponse, summary="多风格改写")
-async def rewrite_endpoint(req: RewriteRequest) -> RewriteResponse:
+async def rewrite_endpoint(
+    req: RewriteRequest,
+    session: AsyncSession | None = Depends(get_session),
+) -> RewriteResponse:
     styles, before_score, lang, model, provider = await _prepare(req)
     outcomes = await asyncio.gather(
         *(
@@ -83,6 +117,16 @@ async def rewrite_endpoint(req: RewriteRequest) -> RewriteResponse:
             for sid in styles
         )
     )
+    for outcome in outcomes:
+        await _record_history(
+            session,
+            req,
+            lang=lang,
+            model=outcome.model,
+            style=outcome.style,
+            score_before=outcome.score_before,
+            score_after=outcome.score_after,
+        )
     return RewriteResponse(
         versions=_outcomes_to_versions(outcomes),
         engine_version=analyze(req.text).engine_version,
@@ -94,7 +138,10 @@ def _sse(event: str, data: dict) -> dict[str, str]:
 
 
 @router.post("/rewrite/stream", summary="流式改写（SSE，docs §7.3 事件协议）")
-async def rewrite_stream_endpoint(req: RewriteRequest) -> EventSourceResponse:
+async def rewrite_stream_endpoint(
+    req: RewriteRequest,
+    session: AsyncSession | None = Depends(get_session),
+) -> EventSourceResponse:
     styles, before_score, lang, model, provider = await _prepare(req)
 
     async def generator():
@@ -120,6 +167,17 @@ async def rewrite_stream_endpoint(req: RewriteRequest) -> EventSourceResponse:
                     yield _sse(ev.kind, ev.data)
                     if ev.kind == "version":
                         finished += 1
+                    elif ev.kind == "score":
+                        # 每风格拿到最终分后记历史（依赖会话在流结束才释放，安全）
+                        await _record_history(
+                            session,
+                            req,
+                            lang=lang,
+                            model=ev.data.get("model") or model,
+                            style=sid,
+                            score_before=ev.data.get("before", before_score),
+                            score_after=ev.data.get("after", before_score),
+                        )
             except ProviderError as exc:
                 yield _sse("error", {"code": exc.code, "message": exc.message, "style": sid})
             except Exception as exc:  # noqa: BLE001 - 流已开始，必须转为事件而非断连

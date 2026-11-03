@@ -16,6 +16,8 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
+.pytest-tmp/
+_tmpdata/
 .mypy_cache/
 htmlcov/
 .coverage
@@ -48,3 +50,5 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+apps/api/.probe-dir/

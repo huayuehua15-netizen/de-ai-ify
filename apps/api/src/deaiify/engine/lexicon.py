@@ -7,7 +7,7 @@
 """
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import cache
 from pathlib import Path
 
@@ -27,11 +27,20 @@ _SPLIT = re.compile(r"[,，、]")
 
 @dataclass(frozen=True)
 class Term:
-    """一条词库词条。"""
+    """一条词库词条。
+
+    match_mode（M4 自定义词条，docs §5.6）：
+    - contains：子串匹配（内置词条与默认）；
+    - exact：子串匹配且边界不得是 ASCII 单词字符（"AI" 不命中 "SAID"；中文无词边界）；
+    - regex：编译后经 compiled 字段执行（build_lexicon 编译一次，热路径不现场编译）。
+    """
 
     text: str
     layer: str
     weight: float = 1.0
+    match_mode: str = "contains"
+    replacement: str | None = None
+    compiled: re.Pattern[str] | None = None
 
 
 @dataclass
@@ -94,7 +103,24 @@ def build_lexicon(
             ls.literal[layer] = terms
     # 自定义词条并入其所属层（DB 词库服务 M4 接同一入口）
     for term in extra_terms or []:
-        ls.literal.setdefault(term.layer, []).append(term)
+        if term.match_mode == "regex" and LAYERS.get(term.layer, False):
+            # 正则层（templates）：与内置正则同路径
+            try:
+                ls.patterns.setdefault(term.layer, []).append(
+                    (term.text, re.compile(term.text, re.IGNORECASE))
+                )
+            except re.error:
+                continue
+        elif term.match_mode == "regex":
+            # 字面层的自定义正则：预编译挂到 Term 上，find_literal 统一执行
+            # （避免热路径现场编译，也让所有检测器自动支持）
+            try:
+                compiled = re.compile(term.text, re.IGNORECASE)
+            except re.error:
+                continue
+            ls.literal.setdefault(term.layer, []).append(replace(term, compiled=compiled))
+        else:
+            ls.literal.setdefault(term.layer, []).append(term)
     return ls
 
 
@@ -104,23 +130,46 @@ def find_literal(
     """查找所有字面词条命中，返回 (start, end, term) 并按位置排序。
 
     casefold 用于英文：在小写副本上匹配，ASCII 大小写不改变偏移。
+    match_mode=exact 额外要求命中边界不是 ASCII 单词字符（自定义词条，M4）。
     """
     hay = text.lower() if casefold else text
     hits: list[tuple[int, int, Term]] = []
     seen: set[tuple[int, int]] = set()
     for term in terms:
+        if term.compiled is not None:
+            # 自定义正则词条：在原文上执行（IGNORECASE 编译时已带）
+            for m in term.compiled.finditer(text):
+                if m.end() <= m.start():
+                    continue
+                key = (m.start(), m.end())
+                if key not in seen:
+                    seen.add(key)
+                    hits.append((m.start(), m.end(), term))
+            continue
         needle = term.text.lower() if casefold else term.text
         if not needle:
             continue
         pos = hay.find(needle)
         while pos != -1:
             key = (pos, pos + len(needle))
-            if key not in seen:
+            if key not in seen and (
+                term.match_mode != "exact" or _word_boundary_ok(hay, pos, pos + len(needle))
+            ):
                 seen.add(key)
                 hits.append((pos, pos + len(needle), term))
             pos = hay.find(needle, pos + 1)
     hits.sort(key=lambda h: (h[0], h[1]))
     return hits
+
+
+def _word_boundary_ok(hay: str, start: int, end: int) -> bool:
+    """exact 模式：命中两端不得紧邻 ASCII 单词字符（中文无词边界，视作通过）。"""
+    word = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+
+    def adjacent(ch: str) -> bool:
+        return bool(ch) and ch in word
+
+    return not ((start > 0 and adjacent(hay[start - 1])) or (end < len(hay) and adjacent(hay[end])))
 
 
 def find_patterns(text: str, pats: list[tuple[str, re.Pattern[str]]]) -> list[tuple[int, int, str]]:

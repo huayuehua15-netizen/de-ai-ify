@@ -43,7 +43,11 @@ def get_provider(name: str | None = None) -> ModelProvider:
             from deaiify.providers.ollama_provider import OllamaProvider
 
             instance = OllamaProvider(settings)
-        _INSTANCES.clear()  # 配置变化时（如测试换 key）不残留旧实例
+        # 配置变化（如测试换 key）只淘汰同 provider 的旧签名实例——
+        # 全表 clear 会抹掉其他 provider 已注入/已缓存的实例（启动预热线程
+        # 与请求并发时造成过 mock 被清、请求打到真实上游的竞态）
+        for key in [k for k in _INSTANCES if k[0] == provider and k != sig]:
+            _INSTANCES.pop(key, None)
         _INSTANCES[sig] = instance
 
     if not instance.configured():

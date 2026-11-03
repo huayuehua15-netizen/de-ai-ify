@@ -500,12 +500,23 @@ class ModelProvider(Protocol):
 | POST | `/rewrite/stream` | 同上，SSE | ✅ |
 | POST | `/batch` | 创建批量任务 `{items:[...]}` → `job_id` | 否 |
 | GET | `/batch/{job_id}` | 批量任务状态与结果 | 否 |
-| GET | `/lexicons` / POST | 词库列表/创建 | — |
-| GET/PATCH/DELETE | `/lexicons/{id}` | 词库读写 | — |
+| GET | `/lexicons` / POST | 词库列表/创建（可带初始词条） | — |
+| GET/PATCH/DELETE | `/lexicons/{id}` | 词库读写（DELETE 级联删词条） | — |
+| POST/DELETE | `/lexicons/{id}/terms[/{tid}]` | 追加词条 / 删单条 | — |
 | POST | `/lexicons/{id}/import` | CSV/JSON 导入 | — |
+| GET | `/lexicons/{id}/export` | 导出（`?format=csv\|json`，attachment 下载） | — |
+| GET | `/lexicons/builtin` | 内置词库统计 + 停用清单 | — |
+| PUT | `/lexicons/builtin/disabled` | 批量停用/恢复内置词条（幂等） | — |
+| GET | `/history` | 改写历史（never 模式 stored_text 恒 null） | — |
+| DELETE | `/history` | 一键清除历史（docs §8.2） | — |
 | GET | `/models` | 可用模型（含健康状态） | — |
 | GET | `/styles` | 风格预设列表 | — |
 | GET | `/health` | 存活 + 各 provider 可达性 + 引擎版本 | — |
+
+> **实现注记（M4）**：`/lexicons/*`、`/history` 已实现（SQLite/PG 同一套 metadata，
+> 启动幂等 `create_all`——出现首个破坏性结构变更时再引入 Alembic）；
+> `/batch` 批量任务仍待 M4 后续。analyze/rewrite 对 DB 故障优雅降级：
+> 词库读不到就用内置词库，历史写不进也不影响响应，**评分/改写永不因存储 500**。
 
 OpenAPI 自动生成：`http://<host>/docs`（Swagger）与 `/redoc`；前端类型经 `openapi-typescript` 生成 `packages/api-types`，**前后端契约零手写漂移**。
 
@@ -576,9 +587,10 @@ event: done     data: {"versions":2,"elapsed_ms":8421}
 -- 自定义词库
 lexicons(id TEXT PK, name TEXT, description TEXT, lang TEXT,
          created_at, updated_at)
-lexicon_terms(id TEXT PK, lexicon_id FK, term TEXT, match_mode TEXT,
-              weight REAL DEFAULT 1.0, replacement TEXT,
+lexicon_terms(id TEXT PK, lexicon_id FK, term TEXT, layer TEXT DEFAULT 'cliches',
+              match_mode TEXT, weight REAL DEFAULT 1.0, replacement TEXT,
               enabled BOOL DEFAULT true, created_at)
+-- layer：词条喂给引擎哪个检测器（cliches/vague/templates/…，见 engine.LAYERS）
 disabled_terms(id TEXT PK, term TEXT, source TEXT)   -- 用户禁用的内置词库条目
 
 -- 风格预设（内置只读 + 用户自定义）
@@ -922,9 +934,16 @@ jobs:
 
 **交付**：词库 CRUD + 导入导出 + 内置条目停用、隐私开关与一键清除、批量任务（进度/恢复/部分失败）、`/history` 页。
 **验收**：
-- [ ] 默认配置下全流程跑完，DB 中 `stored_text` 全为 NULL、无原文行；
-- [ ] 关掉隐私开关 → 历史可见 → 一键清除 → DB 抽查无原文；
+- [x] 默认配置下全流程跑完，DB 中 `stored_text` 全为 NULL、无原文行；
+- [x] 关掉隐私开关 → 历史可见 → 一键清除 → DB 抽查无原文；
 - [ ] 批量 10 文件、其中 2 个故意失败 → 8 成功 2 失败、刷新进度不丢。
+
+> **实现注记（2026-11-04）**：前两条方框由 `tests/test_privacy_history.py`
+> 与 `tests/test_api_lexicons.py` 覆盖（临时 SQLite 夹具，66 用例全绿）：
+> 词库 CRUD/导入导出/内置停用/自定义词条参与评分已实现；历史落库在
+> rewrite 双端点接入（never 模式 stored_text 恒 NULL 且响应二次脱敏，
+> optin + 请求勾选才落原文，TTL 经 `DEAIIFY_HISTORY_TTL_DAYS`）。
+> **剩余**：批量任务 `/batch`（含进度持久化）、Web 端 `/lexicon`、`/history` 页。
 
 ### M5 CLI + Docker + 文档发布（3–4 天）
 

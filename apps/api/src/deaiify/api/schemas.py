@@ -8,9 +8,14 @@ from pydantic import BaseModel, Field
 class AnalyzeRequest(BaseModel):
     text: str = Field(min_length=1, description="待评分文本")
     lang: Literal["auto", "zh", "en"] = "auto"
+    lexicon_ids: list[str] = Field(
+        default_factory=list,
+        max_length=20,
+        description="启用的自定义词库 id（M4；DB 不可达时自动忽略并用内置词库）",
+    )
     store: bool = Field(
         default=False,
-        description="是否保存原文（隐私默认 never；持久化 M4 实现，当前忽略）",
+        description="是否保存原文（隐私默认 never；仅影响历史，见 docs §8.2）",
     )
 
 
@@ -24,7 +29,10 @@ class RewriteRequest(BaseModel):
     styles: list[str] = Field(default_factory=lambda: ["natural"], min_length=1, max_length=6)
     model: ModelChoice = Field(default_factory=ModelChoice)
     gate: bool = Field(default=True, description="质量闸门（docs §6.3）")
-    store: bool = False  # 同 AnalyzeRequest：M4 实现，当前忽略
+    store: bool = Field(
+        default=False,
+        description="本次是否保存原文到历史（仅 DEAIIFY_STORE=optin 时生效，docs §8.2）",
+    )
 
 
 class RewriteVersionOut(BaseModel):

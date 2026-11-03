@@ -16,24 +16,49 @@ from deaiify.db.session import dispose_engine
 
 
 def _warm_providers() -> None:
-    """后台预 import 三个 provider SDK（openai/anthropic 各需秒级）。
+    """后台预 import 三个 provider 实现模块（SDK 各需秒级，anthropic ~9s）。
 
-    不设凭据也预热：import 只付一次成本，否则首个 /models 或 /rewrite
-    请求会在事件循环里同步 import（已用 to_thread 兜底，这里进一步让
-    启动后第一批请求就拿到热缓存）。
+    只 import、不 get_provider 构造实例：构造会读 settings 并写注册表，
+    在启动早期与测试注入/配置变更产生竞态；import 本身才是这笔开销的大头。
     """
-    from deaiify.providers.registry import get_provider, known_providers
+    import deaiify.providers.anthropic_provider  # noqa: F401
+    import deaiify.providers.ollama_provider  # noqa: F401
+    import deaiify.providers.openai_provider  # noqa: F401
 
-    for name in known_providers():
-        try:
-            get_provider(name)
-        except Exception:  # noqa: BLE001 - 未配置凭据属正常，预热只关心 import
-            pass
+
+async def _init_schema() -> None:
+    """启动建表（幂等 create_all）。
+
+    M4 用 create_all 而非 Alembic：当前只有一版表结构，两模式（PG/SQLite）
+    同一套 metadata 即可；出现第一个破坏性结构变更时再引入 Alembic 迁移链。
+    存储不可用时不阻塞启动（health 会如实报告 unavailable）。
+    """
+    from sqlalchemy import text
+
+    from deaiify.db.models import Base
+    from deaiify.db.session import get_engine
+
+    try:
+        engine = get_engine()
+        # SQLite 保证父目录存在（lite 模式 ./data/ 可能未创建）
+        if engine.dialect.name == "sqlite" and engine.url.database:
+            from pathlib import Path
+
+            db_path = Path(engine.url.database)
+            if db_path.parent and str(db_path.parent) not in ("", "."):
+                db_path.parent.mkdir(parents=True, exist_ok=True)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            # 触发一次真实往返，暴露连接问题给 health（而非启动崩溃）
+            await conn.execute(text("SELECT 1"))
+    except Exception as exc:  # noqa: BLE001 - 存储故障降级启动
+        print(f"[deaiify] schema init skipped: {type(exc).__name__}: {exc}")
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    # 启动不主动连库（health 惰性探测）；M4 起在此做迁移检查
+    # health 惰性探测不阻塞启动；建表失败仅告警
+    await _init_schema()
     warm = asyncio.create_task(asyncio.to_thread(_warm_providers))
     yield
     warm.cancel()

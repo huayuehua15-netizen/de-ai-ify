@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # —— 隐私（never = 默认不保存原文，见 §8.2）——
     store: str = "never"
+    history_ttl_days: int | None = None  # optin 模式下历史保留天数；空 = 永久
 
     # —— 模型（评分不需要模型；改写默认走维护者提供的 OpenAI 兼容端点）——
     openai_api_key: str | None = None
