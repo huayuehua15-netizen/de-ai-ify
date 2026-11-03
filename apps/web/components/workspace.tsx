@@ -65,7 +65,8 @@ export function Workspace() {
   const [providers, setProviders] = useState<ProviderOut[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string>("");
   const [selectedModel, setSelectedModel] = useState<string>("");
-  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [stylesError, setStylesError] = useState<string | null>(null);
+  const [modelsError, setModelsError] = useState<string | null>(null);
 
   /* —— 改写 —— */
   const [versions, setVersions] = useState<RewriteVersion[]>([]);
@@ -80,19 +81,36 @@ export function Workspace() {
   const [undoStack, setUndoStack] = useState<string | null>(null);
   const [adoptedFrom, setAdoptedFrom] = useState<string | null>(null);
 
-  /* —— 目录加载 —— */
+  /* —— 目录加载：风格与模型分成两个独立请求 ——
+     /models 含上游可达性探测（可能秒级），不能让它拖死秒回的 /styles，
+     否则首屏风格选择器迟迟不出现、还被连坐报错。 */
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchStyles(), fetchModels()])
-      .then(([styleList, providerList]) => {
+    fetchStyles()
+      .then((styleList) => {
         if (cancelled) return;
         setStyles(styleList);
         setSelectedStyles(styleList.slice(0, DEFAULT_STYLE_COUNT).map((s) => s.id));
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setStylesError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchModels()
+      .then((providerList) => {
+        if (cancelled) return;
         setProviders(providerList);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setCatalogError(err instanceof Error ? err.message : String(err));
+        setModelsError(err instanceof Error ? err.message : String(err));
       });
     return () => {
       cancelled = true;
@@ -316,7 +334,7 @@ export function Workspace() {
           <div className="flex flex-wrap gap-1.5">
             {styles.length === 0 && (
               <span className="text-xs text-zinc-400">
-                {catalogError ? "风格列表加载失败" : "加载中…"}
+                {stylesError ? "风格列表加载失败" : "加载中…"}
               </span>
             )}
             {styles.map((s) => {
@@ -394,7 +412,7 @@ export function Workspace() {
             DEAIIFY_OPENAI_BASE_URL
           </code>{" "}
           后重启 API
-          {catalogError && <span className="ml-1">（目录加载：{catalogError}）</span>}
+          {modelsError && <span className="ml-1">（模型目录：{modelsError}）</span>}
         </div>
       )}
 

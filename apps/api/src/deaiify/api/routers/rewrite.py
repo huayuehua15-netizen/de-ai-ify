@@ -20,7 +20,7 @@ from deaiify.services.styles import get_style
 router = APIRouter()
 
 
-def _prepare(req: RewriteRequest) -> tuple[list[str], int, str, str, Any]:
+async def _prepare(req: RewriteRequest) -> tuple[list[str], int, str, str, Any]:
     """公共校验：文本/风格/provider/模型；返回 (styles, before_score, lang, model, provider)。"""
     settings = get_settings()
     if len(req.text) > settings.max_text_chars:
@@ -36,7 +36,8 @@ def _prepare(req: RewriteRequest) -> tuple[list[str], int, str, str, Any]:
                 "invalid_style",
                 f"未知风格 {sid}（可用：natural/concise/academic/business/social）",
             )
-    provider = get_provider(req.model.provider)  # 未配置 → 503 model_unavailable
+    # 首次调用会同步 import SDK，放线程池避免阻塞事件循环（与 catalog._probe 同理）
+    provider = await asyncio.to_thread(get_provider, req.model.provider)  # 未配置 → 503
     model = req.model.name or settings.default_model
     if not model:
         raise ApiError(
@@ -67,7 +68,7 @@ def _outcomes_to_versions(outcomes) -> list[RewriteVersionOut]:
 
 @router.post("/rewrite", response_model=RewriteResponse, summary="多风格改写")
 async def rewrite_endpoint(req: RewriteRequest) -> RewriteResponse:
-    styles, before_score, lang, model, provider = _prepare(req)
+    styles, before_score, lang, model, provider = await _prepare(req)
     outcomes = await asyncio.gather(
         *(
             rewrite_one(
@@ -94,7 +95,7 @@ def _sse(event: str, data: dict) -> dict[str, str]:
 
 @router.post("/rewrite/stream", summary="流式改写（SSE，docs §7.3 事件协议）")
 async def rewrite_stream_endpoint(req: RewriteRequest) -> EventSourceResponse:
-    styles, before_score, lang, model, provider = _prepare(req)
+    styles, before_score, lang, model, provider = await _prepare(req)
 
     async def generator():
         started = time.perf_counter()

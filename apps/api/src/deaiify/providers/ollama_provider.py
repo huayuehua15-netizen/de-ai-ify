@@ -46,10 +46,22 @@ class OllamaProvider(BaseProvider):
             "options": {"temperature": req.temperature},
         }
 
+    def _client(self, timeout: float) -> httpx.AsyncClient:
+        """本地服务客户端，两项关键设置：
+
+        - trust_env=False：否则系统代理（注册表 WinINET 配置，如
+          http://127.0.0.1:7897）会把 127.0.0.1 的请求也路由进代理，
+          表现为莫名 502；
+        - connect 独立收紧到 1s：本地拒连应是毫秒级，慢即不可达（httpx
+          对 IPv4/IPv6 各试一次，connect 预算会被乘 2），不该占满整体
+          超时预算（影响 /models 冷启动探测）。
+        """
+        return httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=1.0), trust_env=False)
+
     async def _complete(self, req: ModelRequest) -> tuple[str, Usage]:
         timeout = req.timeout or self._settings.rewrite_timeout_s
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with self._client(timeout) as client:
                 resp = await client.post(
                     f"{self._base}/api/chat", json=self._payload(req, stream=False)
                 )
@@ -67,7 +79,7 @@ class OllamaProvider(BaseProvider):
     async def stream(self, req: ModelRequest) -> AsyncIterator[str]:
         timeout = req.timeout or self._settings.rewrite_timeout_s
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with self._client(timeout) as client:
                 async with client.stream(
                     "POST", f"{self._base}/api/chat", json=self._payload(req, stream=True)
                 ) as resp:
@@ -87,7 +99,7 @@ class OllamaProvider(BaseProvider):
 
     async def list_models(self) -> list[ModelInfo]:
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
+            async with self._client(5) as client:
                 resp = await client.get(f"{self._base}/api/tags")
                 resp.raise_for_status()
                 data = resp.json()

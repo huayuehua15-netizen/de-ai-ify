@@ -1,5 +1,6 @@
 """FastAPI 应用工厂（接口设计见 docs/DEVELOPMENT.md §7）。"""
 
+import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -14,10 +15,28 @@ from deaiify.config import get_settings
 from deaiify.db.session import dispose_engine
 
 
+def _warm_providers() -> None:
+    """后台预 import 三个 provider SDK（openai/anthropic 各需秒级）。
+
+    不设凭据也预热：import 只付一次成本，否则首个 /models 或 /rewrite
+    请求会在事件循环里同步 import（已用 to_thread 兜底，这里进一步让
+    启动后第一批请求就拿到热缓存）。
+    """
+    from deaiify.providers.registry import get_provider, known_providers
+
+    for name in known_providers():
+        try:
+            get_provider(name)
+        except Exception:  # noqa: BLE001 - 未配置凭据属正常，预热只关心 import
+            pass
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    # M0：启动不主动连库（health 惰性探测）；M4 起在此做迁移检查与预热
+    # 启动不主动连库（health 惰性探测）；M4 起在此做迁移检查
+    warm = asyncio.create_task(asyncio.to_thread(_warm_providers))
     yield
+    warm.cancel()
     await dispose_engine()
 
 
