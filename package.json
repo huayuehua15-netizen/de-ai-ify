@@ -19,7 +19,8 @@
     "lint:api": "uv run --project apps/api ruff check apps/api",
     "format:api": "uv run --project apps/api ruff format apps/api",
     "typecheck": "pnpm --filter web exec tsc --noEmit",
-    "test": "uv run --project apps/api pytest",
+    "test": "uv run --project apps/api pytest && pnpm test:web",
+    "test:web": "pnpm --filter web test",
     "check:env": "node scripts/check-env.mjs"
   },
   "devDependencies": {

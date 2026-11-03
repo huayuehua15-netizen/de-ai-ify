@@ -3,7 +3,7 @@
 > 把 AI 草稿，改成人写的。
 > 可解释的 AI 文本评分与改写工具：检测并去除套话、空泛表达、结构重复与均匀句长——先评分解释，再一键改写，改完再验证。
 
-**状态：M0 脚手架已就绪**（开发文档见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)）
+**状态：M0 脚手架 ✅ · M1 评分引擎 ✅ · M2 API + 改写 ✅ · M3 Web 主流程（开发中）**（开发文档见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)）
 
 ## 特性（规划）
 

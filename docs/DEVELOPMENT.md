@@ -79,6 +79,8 @@ GitHub 上已存在同名 `de-ai-ify` 仓库（不同 owner，如 `hanzoskill/de
 
 本节全部为 **2026-10-15 实机探测结果**，是第 3 节技术选型的直接依据。
 
+> **2026-11-03 迁移注记**：仓库已迁至新机器 `C:\Users\ddntq\Desktop\de-ai-ify`（非 OneDrive，§2.3 A 风险解除）。下表为旧机器（`C:\Users\niu`）快照，与当前机器的差异：uv 已在 PATH（`%LOCALAPPDATA%\Programs\Python\Python313\Scripts`）、Node v22.22.3（仍满足 ≥20.9）、pnpm 12.14、Docker 与 Ollama 当前未安装/未运行（开发用 lite 模式即可）。uv 构建 jieba 等 sdist 包在受限环境下可能因临时目录权限失败——`uv sync --no-install-package jieba` 可跳过（jieba 全项目无 import，见 §5.2 注）。
+
 ### 2.1 环境事实清单
 
 | 项 | 探测结果 | 结论 |
@@ -414,16 +416,16 @@ class Finding(BaseModel):
 
 ## 6. 改写引擎
 
-### 6.1 风格预设矩阵（v1 内置 6 种）
+### 6.1 风格预设矩阵（v1 内置 5 种 + 1 种自定义）
 
-| style id | 名称 | 目标 | 关键约束 |
-|---|---|---|---|
-| `natural` | 自然口语（默认） | 去 AI 味、像朋友写的 | 短句变奏、允许语气词、禁套话 |
-| `concise` | 简洁直接 | 砍 20–40% 字数 | 禁名词化、一句一信息 |
-| `academic` | 学术克制 | 保专业去空话 | 保留术语与引用位，禁排比与空泛形容词 |
-| `business` | 商务简报 | 结论先行 | 每段首句给结论，量化表达优先 |
-| `social` | 社交媒体 | 短平快 | 句长 ≤ 20 字为主，可用钩子开头 |
-| `custom` | 自定义 | 用户模板 | DB 存 prompt 片段 |
+| style id | 名称 | 目标 | 关键约束 | 状态 |
+|---|---|---|---|---|
+| `natural` | 自然口语（默认） | 去 AI 味、像朋友写的 | 短句变奏、允许语气词、禁套话 | ✅ M2 |
+| `concise` | 简洁直接 | 砍 20–40% 字数 | 禁名词化、一句一信息 | ✅ M2 |
+| `academic` | 学术克制 | 保专业去空话 | 保留术语与引用位，禁排比与空泛形容词 | ✅ M2 |
+| `business` | 商务简报 | 结论先行 | 每段首句给结论，量化表达优先 | ✅ M2 |
+| `social` | 社交媒体 | 短平快 | 句长 ≤ 20 字为主，可用钩子开头 | ✅ M2 |
+| `custom` | 自定义 | 用户模板 | DB 存 prompt 片段 | M4 |
 
 多版本输出 = 对同一文本并行发起 N 个风格请求（默认 N=3，UI 可勾选），每个版本都走 §6.3 质量闸门。
 
@@ -532,11 +534,13 @@ OpenAPI 自动生成：`http://<host>/docs`（Swagger）与 `/redoc`；前端类
 ### 7.3 SSE 事件协议
 
 ```
-event: delta      data: {"style":"natural","text":"逐字增量"}
-event: version    data: {"style":"natural","text":"完整版本","gate":"pass"}
-event: score      data: {"style":"natural","before":76,"after":31,"delta":-45}
-event: error      data: {"code":"provider_timeout","message":"...","style":"concise"}
-event: done       data: {"versions":2,"elapsed_ms":8421}
+event: start    data: {"styles":["natural","concise"],"before":76,"model":"gpt-5.1"}
+event: delta    data: {"style":"natural","text":"逐字增量"}
+event: retry    data: {"style":"natural","attempt":2,"reason":"评分未下降（76 → 78）"}   # 闸门失败重试前下发，客户端先清空该风格缓冲
+event: version  data: {"style":"natural","text":"完整版本","gate":"pass","attempts":1}
+event: score    data: {"style":"natural","before":76,"after":31,"delta":-45}
+event: error    data: {"code":"provider_timeout","message":"...","style":"concise"}       # 单风格失败不中断流，继续其余风格
+event: done     data: {"versions":2,"elapsed_ms":8421}
 ```
 
 前端 `fetch` + `ReadableStream` 解析（EventSource 不支持 POST 自定义头，故不用原生 EventSource）。

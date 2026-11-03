@@ -22,6 +22,11 @@ htmlcov/
 coverage.xml
 jieba.cache
 
+# —— 本地构建/诊断临时目录（沙箱环境下 uv 缓存与 ACL 诊断输出）——
+.uvwork/
+.acl-recovery/
+.pnpm-data/
+
 # —— 密钥与运行数据 ——
 .env
 .env.local

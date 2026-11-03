@@ -67,6 +67,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter web lint
       - run: pnpm --filter web exec tsc --noEmit
+      - run: pnpm --filter web test
       - run: pnpm --filter web build
 
   # e2e（Playwright，M3）与 docker 镜像构建（M5）后续补充
