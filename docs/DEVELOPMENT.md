@@ -358,6 +358,41 @@ score = round( Σ wᵢ × dimensionᵢ )     # 0–100，AI 味浓度
 - 权重存放在 `engine/weights.json`，可被高级用户覆盖，**调权重必须跑 corpus 回归**（§13）；
 - 短文本保护：字数 < 120 时各维按字数比例衰减置信度，`stats.confidence` 标 `low`，UI 提示"样本过短，评分仅供参考"。
 
+#### 5.4.1 文体感知权重（误判修正，2026-11-04 实测驱动）
+
+**问题**：`vagueness`（数字/专名密度）与 `personal`（第一人称/口语/问句）是**反向维度**，
+默认假设"人写文本都有这些信号"。但公文、法律条文、产品说明、技术文档**天然不用第一人称、
+天然没有数字**，于是恒定拿 100 分——这是最大的误伤来源。
+
+实测（21 篇真实人写文体，修复前）：
+
+| 文体 | 修复前均分 | 修复后均分 | 主要误伤维度 |
+|---|---|---|---|
+| 学术论文 | 40.7 | 30.0 | 套话/连接词（"综上所述""然而"是规范学术衔接） |
+| 政府公文 | 24.5 | 10.5 | 个性化信号、空泛度 |
+| 法律条文 | 24.0 | 8.5 | 个性化信号、空泛度 |
+| 产品说明 | 26.5 | 19.0 | 个性化信号 |
+| 新闻稿 | 15.0 | 14.0 | — |
+| 技术文档 | 9.5 | 5.0 | — |
+| **人写整体** | **25.0** | **19.4** | 误伤 >55 分：0 篇（修复前后均为 0） |
+| **AI 套话对照** | **87** | **87** | 检测能力未被削弱 |
+
+**实现**（`engine/register.py` + `engine/weights_register.py`）：
+
+1. **文体识别**：8 类文体的**结构性标志**（非单个套话词）——公文看"一、二、三""各部门/压实"，
+   法律看"第X条/当事人/应当"，技术看"API/QPS/接口"，产品看"使用方法/本品/请勿"，
+   学术看"本文/实验/显著差异/p<"，新闻看"本报讯/记者获悉"，口语看第一人称+语气词+问句。
+   命中阈值 2 个标志（口语 2 个）；优先级 legal > official > product > technical > academic > news > casual。
+2. **按文体重排权重**：`weight' = weight × factor(register, dim)`，再归一化回 1.0。
+   **维度算法本身不变**——保证"同一维度、同一算法，不同文体不同解读"的可解释性。
+   例：公文 `personal` 因子 0.08（几乎不因缺第一人称扣分）、`cliche` 0.30（公文套话是文体规范）；
+   口语反之 `personal` 1.60（口语文本缺人味才可疑）。
+3. **响应字段**：`text_register` / `text_register_label` / `text_register_confidence`，
+   UI 显示文体徽章并解释"为什么这个文体扣分不同"；识别失败为 `unknown`，权重不调整。
+
+> 局限（如实记录）：英文文本暂不做文体细分；文体识别基于标志词，混合文体（如"学术+公文"）
+> 按优先级取第一个达标者；`corpus/` 语料目前以通用 AI 味为主，未按文体分层。
+
 **分数档**
 
 | 分数 | 档位 | UI 色 |
@@ -509,6 +544,12 @@ class ModelProvider(Protocol):
 | PUT | `/lexicons/builtin/disabled` | 批量停用/恢复内置词条（幂等） | — |
 | GET | `/history` | 改写历史（never 模式 stored_text 恒 null） | — |
 | DELETE | `/history` | 一键清除历史（docs §8.2） | — |
+| GET | `/providers/presets` | 供应商预设（9 个：OpenAI/Anthropic/DeepSeek/智谱/Kimi/MiniMax/百炼/Ollama/自定义） | — |
+| GET/POST | `/providers` | 已配置供应商 / 添加（key 加密存储，响应只给掩码） | — |
+| GET/PATCH/DELETE | `/providers/{id}` | 单个读写（PATCH 传空 key = 清除） | — |
+| POST | `/providers/{id}/default` | 设为默认（全局唯一） | — |
+| POST | `/providers/{id}/test` | 实测连通性（列模型，不消耗 token） | — |
+| POST | `/providers/test` | 保存前预检（body 带 kind/base_url/api_key） | — |
 | GET | `/models` | 可用模型（含健康状态） | — |
 | GET | `/styles` | 风格预设列表 | — |
 | GET | `/health` | 存活 + 各 provider 可达性 + 引擎版本 | — |
