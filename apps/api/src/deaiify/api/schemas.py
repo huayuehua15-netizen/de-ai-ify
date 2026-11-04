@@ -22,6 +22,10 @@ class AnalyzeRequest(BaseModel):
 class ModelChoice(BaseModel):
     provider: Literal["openai", "anthropic", "ollama"] | None = None
     name: str | None = Field(default=None, description="模型名；留空用 DEAIIFY_DEFAULT_MODEL")
+    provider_config_id: str | None = Field(
+        default=None,
+        description="UI 中配置的供应商 id（/providers）；优先于 .env 配置",
+    )
 
 
 class RewriteRequest(BaseModel):

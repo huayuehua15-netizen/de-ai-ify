@@ -62,6 +62,37 @@ def known_providers() -> list[str]:
     return ["openai", "anthropic", "ollama"]
 
 
+def build_from_config(kind: str, api_key: str | None, base_url: str | None, settings=None):
+    """按 DB 供应商配置构造实例（UI 添加的供应商走这条路径）。
+
+    与 get_provider 的区别：不读 .env 签名、不进全局缓存——每次调用新建，
+    因为 UI 配置可能随时改；HTTP 客户端开销可忽略（每请求一个）。
+    """
+    settings = settings or get_settings()
+    # 用 Settings 的副本承载 DB 值：适配器签名统一，内部逻辑无需改动
+    overridden = settings.model_copy(
+        update={
+            "openai_api_key": api_key if kind == "openai" else settings.openai_api_key,
+            "openai_base_url": base_url if kind == "openai" else settings.openai_base_url,
+            "anthropic_api_key": api_key if kind == "anthropic" else settings.anthropic_api_key,
+            "ollama_base_url": (base_url or settings.ollama_base_url)
+            if kind == "ollama"
+            else settings.ollama_base_url,
+        }
+    )
+    if kind == "openai":
+        from deaiify.providers.openai_provider import OpenAIProvider
+
+        return OpenAIProvider(overridden)
+    if kind == "anthropic":
+        from deaiify.providers.anthropic_provider import AnthropicProvider
+
+        return AnthropicProvider(overridden)
+    from deaiify.providers.ollama_provider import OllamaProvider
+
+    return OllamaProvider(overridden)
+
+
 def install_instance(provider: ModelProvider) -> None:
     """测试注入口：把预构造的 provider 实例挂进注册表（含 MockTransport 客户端）。"""
     settings = get_settings()

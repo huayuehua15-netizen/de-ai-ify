@@ -75,3 +75,11 @@ class AnalysisResult(BaseModel):
     stats: TextStats
     lang: str
     engine_version: str
+    text_register: str = Field(
+        default="unknown",
+        description="识别出的文体（academic/official/legal/technical/product/news/casual）",
+    )
+    text_register_label: str = Field(default="通用", description="文体中文名，供 UI 展示")
+    text_register_confidence: float = Field(
+        default=0.0, description="文体识别置信度 0-1（按文体调整权重，见 engine/weights_register）"
+    )

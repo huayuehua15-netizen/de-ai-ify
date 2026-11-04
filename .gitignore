@@ -33,6 +33,8 @@ jieba.cache
 .env
 .env.local
 .env.*.local
+# API Key 加密主密钥（本机自动生成，绝不入库）
+.deaiify-secret
 data/
 *.db
 *.sqlite

@@ -75,6 +75,29 @@ class DisabledTerm(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ProviderConfig(Base):
+    """用户配置的模型供应商（UI「模型设置」页管理，替代手改 .env）。
+
+    安全约定：api_key 落库前经 services/secrets 加密（Fernet），
+    对外响应永不返回明文（只返回 has_key 布尔 + 掩码）。
+    """
+
+    __tablename__ = "provider_configs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)  # 展示名
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)  # openai/anthropic/ollama/兼容
+    base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    api_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)  # Fernet 密文
+    default_model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class RewriteHistory(Base):
     """改写历史：默认只存哈希/长度/分数，stored_text 恒 NULL（§8.2 隐私）。"""
 

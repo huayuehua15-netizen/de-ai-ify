@@ -18,20 +18,26 @@ import {
   ApiError,
   MAX_TEXT_CHARS,
   analyze,
-  fetchModels,
+  fetchProviderConfigs,
   fetchStyles,
 } from "@/lib/api";
 import { openRewriteStream } from "@/lib/sse";
 import type {
   AnalysisResult,
   Finding,
-  ProviderOut,
+  ProviderConfig,
   RewriteVersion,
   StyleOut,
 } from "@/lib/types";
 
 const DEBOUNCE_MS = 600;
 const DEFAULT_STYLE_COUNT = 3; // docs §6.1：多版本默认 N=3
+
+/** 空态示例：典型 AI 套话，点一下就能看到评分与高亮效果 */
+const EXAMPLE_TEXT =
+  "在当今社会，人工智能技术正在快速发展。首先，它提升了工作效率；" +
+  "其次，它降低了运营成本；最后，它优化了用户体验。综上所述，" +
+  "人工智能具有重要意义，值得我们进行深入探讨与研究。";
 
 function emptyVersion(style: string): RewriteVersion {
   return {
@@ -62,8 +68,8 @@ export function Workspace() {
   /* —— 目录（风格 / 模型）—— */
   const [styles, setStyles] = useState<StyleOut[]>([]);
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
-  const [providers, setProviders] = useState<ProviderOut[]>([]);
-  const [selectedProvider, setSelectedProvider] = useState<string>("");
+  const [providerConfigs, setProviderConfigs] = useState<ProviderConfig[]>([]);
+  const [selectedConfigId, setSelectedConfigId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [stylesError, setStylesError] = useState<string | null>(null);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -103,10 +109,16 @@ export function Workspace() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchModels()
-      .then((providerList) => {
+    fetchProviderConfigs()
+      .then((configs) => {
         if (cancelled) return;
-        setProviders(providerList);
+        setProviderConfigs(configs);
+        // 默认选中：默认供应商（后端 is_default）> 第一个
+        const def = configs.find((c) => c.is_default) ?? configs[0];
+        if (def) {
+          setSelectedConfigId(def.id);
+          setSelectedModel(def.default_model ?? "");
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -117,8 +129,9 @@ export function Workspace() {
     };
   }, []);
 
-  const availableProviders = providers.filter((p) => p.available);
-  const anyModelAvailable = availableProviders.length > 0;
+  const enabledConfigs = providerConfigs.filter((c) => c.enabled);
+  const anyModelAvailable = enabledConfigs.length > 0;
+  const activeConfig = enabledConfigs.find((c) => c.id === selectedConfigId) ?? null;
 
   /* —— 防抖评分（docs §10.2）——
      effect 只负责调度定时器；清理/请求/写状态全部在回调里做，
@@ -200,7 +213,11 @@ export function Workspace() {
         {
           text: snapshot,
           styles: selectedStyles,
-          model: { provider: selectedProvider || null, name: selectedModel || null },
+          model: {
+            provider: activeConfig?.kind ?? null,
+            name: selectedModel || activeConfig?.default_model || null,
+            provider_config_id: selectedConfigId,
+          },
           gate: true,
         },
         {
@@ -278,7 +295,7 @@ export function Workspace() {
     } finally {
       if (!ctrl.signal.aborted) setStreaming(false);
     }
-  }, [canRewrite, selectedModel, selectedProvider, selectedStyles, text]);
+  }, [canRewrite, activeConfig, selectedConfigId, selectedModel, selectedStyles, text]);
 
   /* Ctrl/Cmd + Enter 触发改写 */
   useEffect(() => {
@@ -357,34 +374,37 @@ export function Workspace() {
             })}
           </div>
 
-          <span className="ml-auto flex items-center gap-2 text-xs text-zinc-500">
+          <span className="ml-auto flex flex-wrap items-center gap-2 text-xs text-zinc-500">
             <span className="rounded-full border border-zinc-300 px-2 py-0.5 dark:border-zinc-700">
               隐私模式：原文不保存
             </span>
-            <select
-              value={`${selectedProvider}|${selectedModel}`}
-              onChange={(e) => {
-                const [p, m] = e.target.value.split("|");
-                setSelectedProvider(p);
-                setSelectedModel(m);
-              }}
-              className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
+            <a
+              href="/settings"
+              className="rounded-full border border-zinc-300 px-2 py-0.5 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
             >
-              <option value="|">模型：自动（后端默认）</option>
-              {availableProviders.flatMap((p) =>
-                p.models.length > 0 ? (
-                  <optgroup key={p.provider} label={p.provider}>
-                    {p.models.map((m) => (
-                      <option key={`${p.provider}|${m.id}`} value={`${p.provider}|${m.id}`}>
-                        {m.id}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : (
-                  <option key={p.provider} value={`${p.provider}|`}>
-                    {p.provider}（无可用模型）
-                  </option>
-                ),
+              模型设置
+            </a>
+            <select
+              value={selectedConfigId ?? ""}
+              onChange={(e) => {
+                const id = e.target.value;
+                setSelectedConfigId(id || null);
+                const cfg = providerConfigs.find((c) => c.id === id);
+                setSelectedModel(cfg?.default_model ?? "");
+              }}
+              className="max-w-[220px] rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
+            >
+              <option value="">模型：默认供应商</option>
+              {providerConfigs.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.is_default ? "（默认）" : ""}
+                </option>
+              ))}
+              {providerConfigs.length === 0 && (
+                <option value="" disabled>
+                  未配置供应商 → 去「模型设置」
+                </option>
               )}
             </select>
             <button
@@ -401,18 +421,23 @@ export function Workspace() {
 
       {/* 未配置模型引导（评分不受影响） */}
       {!anyModelAvailable && (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
-          未检测到可用模型——评分照常可用（纯本地）；改写需在{" "}
-          <code className="rounded bg-amber-100 px-1 dark:bg-amber-900">.env</code> 配置{" "}
-          <code className="rounded bg-amber-100 px-1 dark:bg-amber-900">
-            DEAIIFY_OPENAI_API_KEY
-          </code>{" "}
-          /{" "}
-          <code className="rounded bg-amber-100 px-1 dark:bg-amber-900">
-            DEAIIFY_OPENAI_BASE_URL
-          </code>{" "}
-          后重启 API
-          {modelsError && <span className="ml-1">（模型目录：{modelsError}）</span>}
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 dark:border-amber-900 dark:bg-amber-950">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-2 text-xs text-amber-800 dark:text-amber-300">
+            <span>
+              还没配置模型供应商——<strong>评分照常可用（纯本地）</strong>，改写需要先配一个。
+            </span>
+            <a
+              href="/settings"
+              className="rounded-full bg-amber-600 px-3 py-1 font-medium text-white transition-colors hover:bg-amber-700 dark:bg-amber-500 dark:text-amber-950 dark:hover:bg-amber-400"
+            >
+              去配置 →
+            </a>
+            {modelsError && (
+              <span className="text-amber-600/70 dark:text-amber-500/70">
+                （加载失败：{modelsError}）
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -430,6 +455,7 @@ export function Workspace() {
               setActiveKey(null);
             }}
             onFindingClick={handleFindingClick}
+            onUseExample={() => setText(EXAMPLE_TEXT)}
           />
           <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
             <span>

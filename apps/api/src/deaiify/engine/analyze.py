@@ -15,6 +15,7 @@ from deaiify.engine.models import (
     TextStats,
     band_of,
 )
+from deaiify.engine.register import REGISTER_LABELS, detect_register
 from deaiify.engine.segment import (
     count_words,
     detect_lang,
@@ -23,6 +24,7 @@ from deaiify.engine.segment import (
     split_sentences,
 )
 from deaiify.engine.version import ENGINE_VERSION
+from deaiify.engine.weights_register import adjust_weights
 
 _WEIGHTS_PATH = Path(__file__).parent / "weights.json"
 _SEVERITY_RANK = {"high": 0, "mid": 1, "low": 2}
@@ -92,7 +94,10 @@ def analyze(
         chars=chars,
     )
 
-    weights = load_weights()
+    # 文体识别 → 按文体重排权重（修正反向维度对正式文体的系统性误判）
+    register, register_confidence = detect_register(text, resolved_lang)
+    weights = adjust_weights(load_weights(), register)
+
     dimensions: list[DimensionScore] = []
     all_findings: list[Finding] = []
     total = 0.0
@@ -137,4 +142,7 @@ def analyze(
         ),
         lang=resolved_lang,
         engine_version=ENGINE_VERSION,
+        text_register=register,
+        text_register_label=REGISTER_LABELS.get(register, register),
+        text_register_confidence=register_confidence,
     )

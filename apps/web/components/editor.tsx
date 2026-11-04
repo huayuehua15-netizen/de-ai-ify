@@ -60,6 +60,8 @@ export interface EditorProps {
   activeKey: string | null;
   onChange: (value: string) => void;
   onFindingClick: (finding: Finding) => void;
+  /** 空态时展示「用示例文本试试」按钮；不传则不显示 */
+  onUseExample?: () => void;
 }
 
 export function Editor({
@@ -69,6 +71,7 @@ export function Editor({
   activeKey,
   onChange,
   onFindingClick,
+  onUseExample,
 }: EditorProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -179,6 +182,19 @@ export function Editor({
         spellCheck={false}
         className={`absolute inset-0 h-full w-full resize-none border-0 bg-transparent text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-600 ${TYPO}`}
       />
+
+      {/* 空态引导：一键填入示例，降低上手门槛（不覆盖已有内容） */}
+      {!value && onUseExample && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 pb-6">
+          <button
+            type="button"
+            onClick={onUseExample}
+            className="pointer-events-auto rounded-full border border-zinc-300 bg-white/90 px-3 py-1.5 text-xs text-zinc-600 shadow-sm backdrop-blur transition-colors hover:border-zinc-400 hover:text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
+          >
+            用示例文本试试 →
+          </button>
+        </div>
+      )}
     </div>
   );
 }

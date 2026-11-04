@@ -47,6 +47,43 @@ export interface AnalysisResult {
   stats: TextStats;
   lang: string;
   engine_version: string;
+  /** 识别出的文体（按文体重排维度权重，见后端 engine/register.py） */
+  text_register: string;
+  text_register_label: string;
+  text_register_confidence: number;
+}
+
+/* —— 供应商配置（模型设置页）—— */
+
+export interface ProviderPreset {
+  id: string;
+  name: string;
+  kind: "openai" | "anthropic" | "ollama";
+  base_url: string;
+  needs_key: boolean;
+  docs_url: string;
+  models: string[];
+  note: string;
+}
+
+export interface ProviderConfig {
+  id: string;
+  name: string;
+  kind: "openai" | "anthropic" | "ollama";
+  base_url: string;
+  default_model: string;
+  has_key: boolean;
+  key_mask: string;
+  is_default: boolean;
+  enabled: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ConnectivityResult {
+  ok: boolean;
+  models: string[];
+  error: string | null;
 }
 
 export interface StyleOut {

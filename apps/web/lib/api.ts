@@ -6,8 +6,11 @@
 import type {
   AnalysisResult,
   ApiErrorBody,
+  ConnectivityResult,
   HealthData,
+  ProviderConfig,
   ProviderOut,
+  ProviderPreset,
   StyleOut,
 } from "./types";
 
@@ -44,6 +47,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(code, message, res.status);
   }
+  // 204 No Content / 空体：不解析 JSON
+  if (res.status === 204 || res.headers.get("content-length") === "0") {
+    return undefined as T;
+  }
   return (await res.json()) as T;
 }
 
@@ -68,4 +75,61 @@ export function fetchModels(): Promise<ProviderOut[]> {
 
 export function fetchHealth(signal?: AbortSignal): Promise<HealthData> {
   return request<HealthData>("/api/v1/health", { cache: "no-store", signal });
+}
+
+/* —— 供应商配置（模型设置页）—— */
+
+export function fetchPresets(): Promise<ProviderPreset[]> {
+  return request<ProviderPreset[]>("/api/v1/providers/presets");
+}
+
+export function fetchProviderConfigs(): Promise<ProviderConfig[]> {
+  return request<ProviderConfig[]>("/api/v1/providers");
+}
+
+export function createProviderConfig(body: {
+  name: string;
+  kind: string;
+  base_url?: string | null;
+  api_key?: string | null;
+  default_model?: string | null;
+  is_default?: boolean;
+}): Promise<ProviderConfig> {
+  return request<ProviderConfig>("/api/v1/providers", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateProviderConfig(
+  id: string,
+  body: Record<string, unknown>,
+): Promise<ProviderConfig> {
+  return request<ProviderConfig>(`/api/v1/providers/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteProviderConfig(id: string): Promise<void> {
+  return request<void>(`/api/v1/providers/${id}`, { method: "DELETE" });
+}
+
+export function setDefaultProvider(id: string): Promise<ProviderConfig> {
+  return request<ProviderConfig>(`/api/v1/providers/${id}/default`, { method: "POST" });
+}
+
+export function testProviderConfig(id: string): Promise<ConnectivityResult> {
+  return request<ConnectivityResult>(`/api/v1/providers/${id}/test`, { method: "POST" });
+}
+
+export function testProviderDraft(body: {
+  kind: string;
+  base_url?: string | null;
+  api_key?: string | null;
+}): Promise<ConnectivityResult> {
+  return request<ConnectivityResult>("/api/v1/providers/test", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }

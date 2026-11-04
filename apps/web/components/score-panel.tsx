@@ -136,10 +136,28 @@ export function ScorePanel({
       <div className="flex items-center gap-4">
         <ScoreRing score={result.score} band={result.band} />
         <div className="flex flex-col gap-2">
-          <span className={`self-start rounded-full px-2.5 py-1 text-xs font-medium ${color.badge}`}>
-            {result.band_label}
-            {result.stats.confidence === "low" && " · 样本过短，仅供参考"}
-          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span
+              className={`self-start rounded-full px-2.5 py-1 text-xs font-medium ${color.badge}`}
+            >
+              {result.band_label}
+            </span>
+            {result.text_register !== "unknown" && (
+              <span
+                title={`已按「${result.text_register_label}」文体调整各维度权重（置信度 ${Math.round(
+                  result.text_register_confidence * 100,
+                )}%），避免把该文体的规范表达误判为 AI 味`}
+                className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-300"
+              >
+                文体：{result.text_register_label}
+              </span>
+            )}
+            {result.stats.confidence === "low" && (
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                样本过短，仅供参考
+              </span>
+            )}
+          </div>
           <p className="text-xs leading-5 text-zinc-500 dark:text-zinc-400">
             {result.stats.chars} 字 · {result.stats.sentences} 句 · 句长 CV{" "}
             {result.stats.sent_len_cv}
