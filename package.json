@@ -4,6 +4,23 @@
   "private": true,
   "description": "去 AI 味：可解释的 AI 文本评分与改写工具（Web / REST API / CLI，可完全自托管）",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/huayuehua15-netizen/de-ai-ify.git"
+  },
+  "homepage": "https://github.com/huayuehua15-netizen/de-ai-ify#readme",
+  "bugs": {
+    "url": "https://github.com/huayuehua15-netizen/de-ai-ify/issues"
+  },
+  "keywords": [
+    "ai-text",
+    "writing",
+    "chinese",
+    "nlp",
+    "self-hosted",
+    "fastapi",
+    "nextjs"
+  ],
   "packageManager": "pnpm@12.6.0",
   "engines": {
     "node": ">=20.9"

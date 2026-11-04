@@ -1,5 +1,10 @@
 # de-ai-ify
 
+[![CI](https://github.com/huayuehua15-netizen/de-ai-ify/actions/workflows/ci.yml/badge.svg)](https://github.com/huayuehua15-netizen/de-ai-ify/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
+[![Next.js 16](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
+
 > 把 AI 草稿，改成人写的。
 > 可解释的 AI 文本评分与改写工具：检测并去除套话、空泛表达、结构重复与均匀句长——先评分解释，再一键改写，改完再验证。
 
@@ -91,6 +96,17 @@ apps/api    FastAPI + SQLAlchemy 2.1 (Python 3.13, uv) — REST API / 评分引�
 ## 开发文档
 
 完整设计（评分算法规格、API、数据模型、里程碑）见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+
+## 参与贡献
+
+欢迎 Issue 和 PR。开始之前请先读：
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — 环境搭建、提交约定、PR 要求
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — 社区行为准则
+- [CHANGELOG.md](CHANGELOG.md) — 变更记录
+- [SECURITY.md](SECURITY.md) — 漏洞报告渠道（**请勿公开提 Issue**）
+
+动评分规则前特别注意：`corpus/` 回归必须全绿（AI ≥65 / 人写 ≤35），且不接受为凑分修改验收线。
 
 ## License
 

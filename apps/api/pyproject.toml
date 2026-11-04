@@ -4,6 +4,16 @@ version = "0.1.0"
 description = "去 AI 味：可解释的 AI 文本评分与改写引擎（de-ai-ify 后端 / CLI）"
 license = "MIT"
 requires-python = ">=3.13"
+keywords = ["ai-text", "writing", "chinese", "nlp", "self-hosted"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: Chinese (Simplified)",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Linguistic",
+]
 dependencies = [
     "fastapi>=0.143,<1.0",
     "uvicorn[standard]>=0.54,<1.0",
@@ -22,6 +32,11 @@ dependencies = [
     "openai>=3.31,<4.0",
     "anthropic>=1.14,<2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/huayuehua15-netizen/de-ai-ify"
+Repository = "https://github.com/huayuehua15-netizen/de-ai-ify"
+Issues = "https://github.com/huayuehua15-netizen/de-ai-ify/issues"
 
 [dependency-groups]
 dev = [
