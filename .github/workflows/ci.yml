@@ -66,8 +66,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter web lint
+      # tsc 依赖 Next 自动生成的 .next/types（LayoutProps/PageProps 等全局类型），
+      # 这些文件被 gitignore 且只在 build 后出现——必须先 build 再 tsc，
+      # 否则 CI 上会报 "Cannot find name 'LayoutProps'"（本地因跑过 build 而不复现）
+      - run: pnpm --filter web build
       - run: pnpm --filter web exec tsc --noEmit
       - run: pnpm --filter web test
-      - run: pnpm --filter web build
 
   # e2e（Playwright，M3）与 docker 镜像构建（M5）后续补充
