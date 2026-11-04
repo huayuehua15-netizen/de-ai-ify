@@ -10,14 +10,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { CharLimit } from "@/components/char-limit";
 import { Editor } from "@/components/editor";
 import { DiffView } from "@/components/diff-view";
 import { ScorePanel } from "@/components/score-panel";
 import { VersionTabs } from "@/components/version-tabs";
 import {
   ApiError,
-  MAX_TEXT_CHARS,
+  MAX_TEXT_CHARS as FALLBACK_MAX_CHARS,
   analyze,
+  fetchHealth,
   fetchProviderConfigs,
   fetchStyles,
 } from "@/lib/api";
@@ -64,6 +66,8 @@ export function Workspace() {
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const analyzeAbort = useRef<AbortController | null>(null);
+  /** 字数上限：初值用兜底常量，拿到 /health 后替换为服务端真实配置 */
+  const [maxChars, setMaxChars] = useState<number>(FALLBACK_MAX_CHARS);
 
   /* —— 目录（风格 / 模型）—— */
   const [styles, setStyles] = useState<StyleOut[]>([]);
@@ -129,6 +133,23 @@ export function Workspace() {
     };
   }, []);
 
+  /* —— 字数上限：以后端配置为准（DEAIIFY_MAX_TEXT_CHARS 可改） —— */
+  useEffect(() => {
+    let cancelled = false;
+    fetchHealth()
+      .then((h) => {
+        if (cancelled) return;
+        const limit = h.limits?.max_text_chars;
+        if (typeof limit === "number" && limit > 0) setMaxChars(limit);
+      })
+      .catch(() => {
+        // 拿不到就沿用兜底值，不影响评分
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const enabledConfigs = providerConfigs.filter((c) => c.enabled);
   const anyModelAvailable = enabledConfigs.length > 0;
   const activeConfig = enabledConfigs.find((c) => c.id === selectedConfigId) ?? null;
@@ -139,8 +160,8 @@ export function Workspace() {
   useEffect(() => {
     if (!text.trim()) return;
     const timer = setTimeout(() => {
-      if (text.length > MAX_TEXT_CHARS) {
-        setAnalyzeError(`文本超过 ${MAX_TEXT_CHARS} 字上限，请拆分后分段评分`);
+      if (text.length > maxChars) {
+        setAnalyzeError(`文本超过 ${maxChars.toLocaleString()} 字上限，请拆分后分段评分`);
         return;
       }
       analyzeAbort.current?.abort();
@@ -167,7 +188,7 @@ export function Workspace() {
         });
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [text]);
+  }, [text, maxChars]);
 
   /** 清空文本时同步复位评分状态（由 onChange 触发，非 effect）。 */
   const resetAnalysis = useCallback(() => {
@@ -341,46 +362,57 @@ export function Workspace() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      {/* 顶栏：风格 / 模型 / 隐私 */}
-      <div className="border-b border-zinc-200 bg-zinc-50/70 dark:border-zinc-800 dark:bg-zinc-900/50">
-        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-3 px-4 py-2.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            风格
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {styles.length === 0 && (
-              <span className="text-xs text-zinc-400">
-                {stylesError ? "风格列表加载失败" : "加载中…"}
-              </span>
-            )}
-            {styles.map((s) => {
-              const on = selectedStyles.includes(s.id);
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  title={s.description}
-                  onClick={() => toggleStyle(s.id)}
-                  className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                    on
-                      ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
-                      : "border-zinc-300 text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-400"
-                  }`}
-                >
-                  {s.name}
-                </button>
-              );
-            })}
+    <div className="flex min-h-dvh flex-col bg-background">
+      {/* 顶栏：左=风格多选 / 右=隐私·模型·主操作 */}
+      <div className="sticky top-0 z-10 border-b border-zinc-200/80 bg-white/85 backdrop-blur-md dark:border-zinc-800/80 dark:bg-zinc-950/85">
+        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+          {/* 风格组 */}
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+              改写风格
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {styles.length === 0 && (
+                <span className="text-xs text-zinc-400">
+                  {stylesError ? "风格列表加载失败" : "加载中…"}
+                </span>
+              )}
+              {styles.map((s) => {
+                const on = selectedStyles.includes(s.id);
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    title={s.description}
+                    aria-pressed={on}
+                    onClick={() => toggleStyle(s.id)}
+                    className={`rounded-full border px-2.5 py-1 text-xs transition-all ${
+                      on
+                        ? "border-zinc-900 bg-zinc-900 font-medium text-white shadow-sm dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+                        : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    {s.name}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <span className="ml-auto flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-            <span className="rounded-full border border-zinc-300 px-2 py-0.5 dark:border-zinc-700">
-              隐私模式：原文不保存
+          {/* 右侧操作组 */}
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <span
+              title="评分纯本地完成；原文默认不写入数据库"
+              className="hidden items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50/60 px-2.5 py-1 text-[11px] text-emerald-700 sm:inline-flex dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400"
+            >
+              <svg viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor" aria-hidden>
+                <path d="M8 1a3.5 3.5 0 0 0-3.5 3.5V7H4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1h-.5V4.5A3.5 3.5 0 0 0 8 1Zm2 6H6V4.5a2 2 0 1 1 4 0V7Z" />
+              </svg>
+              原文不保存
             </span>
             <a
               href="/settings"
-              className="rounded-full border border-zinc-300 px-2 py-0.5 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              className="rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-600 transition-colors hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
             >
               模型设置
             </a>
@@ -411,11 +443,11 @@ export function Workspace() {
               type="button"
               onClick={() => void handleRewrite()}
               disabled={!canRewrite}
-              className="rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              className="rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-medium text-white shadow-sm transition-all hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
             >
               {streaming ? "改写中…" : `一键改写（${selectedStyles.length}）`}
             </button>
-          </span>
+          </div>
         </div>
       </div>
 
@@ -442,8 +474,18 @@ export function Workspace() {
       )}
 
       {/* 主区：编辑器 + 评分面板 */}
-      <main className="mx-auto grid w-full max-w-7xl flex-1 grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-[1fr_360px]">
-        <div className="flex min-h-[420px] flex-col gap-2">
+      <main className="mx-auto grid w-full max-w-7xl flex-1 grid-cols-1 gap-5 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="flex min-h-[480px] flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+              原文
+              {analysis && (
+                <span className="ml-2 text-[11px] font-normal text-zinc-400">
+                  命中 {analysis.findings.length} 处
+                </span>
+              )}
+            </h2>
+          </div>
           <Editor
             value={text}
             findings={analysis?.findings ?? []}
@@ -457,14 +499,14 @@ export function Workspace() {
             onFindingClick={handleFindingClick}
             onUseExample={() => setText(EXAMPLE_TEXT)}
           />
-          <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
-            <span>
-              {text.length} 字
-              {text.length > MAX_TEXT_CHARS && (
-                <span className="text-rose-500">（超限）</span>
-              )}
-            </span>
-            {analyzing && <span>评分中…</span>}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-zinc-500">
+            <CharLimit current={text.length} max={maxChars} />
+            {analyzing && (
+              <span className="flex items-center gap-1.5 text-zinc-400">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-500" />
+                评分中…
+              </span>
+            )}
             {streamError && (
               <span className="text-rose-600 dark:text-rose-400">改写失败：{streamError}</span>
             )}
@@ -476,13 +518,22 @@ export function Workspace() {
                 <button
                   type="button"
                   onClick={handleUndo}
-                  className="underline underline-offset-2 hover:text-zinc-700"
+                  className="underline underline-offset-2 hover:text-zinc-700 dark:hover:text-zinc-300"
                 >
                   撤销
                 </button>
               </span>
             )}
-            <span className="ml-auto text-zinc-400">Ctrl+Enter 改写</span>
+            <span className="ml-auto hidden items-center gap-1 text-zinc-400 sm:flex">
+              <kbd className="rounded border border-zinc-300 px-1 font-mono text-[10px] dark:border-zinc-700">
+                Ctrl
+              </kbd>
+              +
+              <kbd className="rounded border border-zinc-300 px-1 font-mono text-[10px] dark:border-zinc-700">
+                Enter
+              </kbd>
+              改写
+            </span>
           </div>
 
           {/* 版本 Tabs + Diff 切换 */}
@@ -521,14 +572,16 @@ export function Workspace() {
           )}
         </div>
 
-        <aside className="lg:sticky lg:top-4 lg:self-start">
-          <ScorePanel
-            result={analysis}
-            loading={analyzing}
-            error={analyzeError}
-            activeKey={activeKey}
-            onFindingClick={handleFindingClick}
-          />
+        <aside className="lg:sticky lg:top-[64px] lg:self-start">
+          <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+            <ScorePanel
+              result={analysis}
+              loading={analyzing}
+              error={analyzeError}
+              activeKey={activeKey}
+              onFindingClick={handleFindingClick}
+            />
+          </div>
         </aside>
       </main>
     </div>

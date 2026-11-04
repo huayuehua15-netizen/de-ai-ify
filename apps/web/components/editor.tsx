@@ -141,7 +141,7 @@ export function Editor({
   return (
     <div
       ref={wrapRef}
-      className="relative h-full overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950"
+      className="group relative h-full overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors focus-within:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:shadow-none dark:focus-within:border-zinc-600"
     >
       {/* 镜像层：只画高亮底色，文字透明由下层 textarea 盖住 */}
       <div

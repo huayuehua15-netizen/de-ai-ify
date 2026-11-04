@@ -105,5 +105,10 @@ async def health() -> dict:
         "db": await check_db(),
         "redis": await check_redis(),
         "providers": await check_providers(),
+        "limits": {
+            # 前端据此显示字数提示，避免硬编码与 DEAIIFY_MAX_TEXT_CHARS 不同步
+            "max_text_chars": settings.max_text_chars,
+            "batch_concurrency": settings.batch_concurrency,
+        },
         "time": int(time.time()),
     }

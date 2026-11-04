@@ -122,6 +122,7 @@ export interface HealthData {
   db: { status: string; dialect?: string; detail?: string };
   redis: { status: string; detail?: string };
   providers: ProvidersHealth;
+  limits: { max_text_chars: number; batch_concurrency: number };
   time: number;
 }
 

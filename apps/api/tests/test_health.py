@@ -24,6 +24,10 @@ def test_health_shape() -> None:
     assert providers["source"] in {"ui", "env", "none"}
     assert isinstance(providers["count"], int)
     assert "env_fallback" in providers
+    # 运行时限制：前端据此显示字数提示，避免硬编码不同步
+    limits = data["limits"]
+    assert limits["max_text_chars"] == 20000
+    assert isinstance(limits["batch_concurrency"], int)
 
 
 def test_health_providers_none_when_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
