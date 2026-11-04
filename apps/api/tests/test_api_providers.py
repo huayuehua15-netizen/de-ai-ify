@@ -54,7 +54,7 @@ def test_key_is_encrypted_at_rest(db_client: TestClient) -> None:
     row = run_async(fetch())
     assert row is not None
     assert row.api_key_enc is not None
-    assert row.api_key_enc.startswith("v1:")
+    assert row.api_key_enc.startswith("v2:"), "落库应为 Fernet 密文"
     assert "sk-1234567890abcdef" not in row.api_key_enc
     # 解密可还原（服务端自用）
     assert crypto.decrypt(row.api_key_enc) == "sk-1234567890abcdef"
@@ -121,12 +121,60 @@ def test_presave_connectivity_probe(db_client: TestClient) -> None:
 def test_secrets_roundtrip() -> None:
     plain = "sk-test-key-abcdefgh"
     token = crypto.encrypt(plain)
-    assert token.startswith("v1:")
+    assert token.startswith("v2:"), "新密文应为 Fernet（v2）格式"
     assert crypto.decrypt(token) == plain
-    # 同一明文两次加密结果不同（随机 salt/nonce）
+    # Fernet 带随机 IV：同一明文两次结果必然不同
     assert crypto.encrypt(plain) != token
     assert crypto.decrypt("") == ""
     assert crypto.decrypt("garbage") == ""
+
+
+def test_secret_not_plaintext_in_ciphertext() -> None:
+    """密文里不得出现明文片段（基本防呆）。"""
+    plain = "sk-super-secret-value-123456"
+    token = crypto.encrypt(plain)
+    assert plain not in token
+    assert "super-secret" not in token
+
+
+def test_fernet_detects_tampering() -> None:
+    """Fernet 自带 HMAC：密文被篡改后解密必须失败（返回空串，不抛异常）。"""
+    import base64 as b64
+
+    token = crypto.encrypt("sk-tamper-me")
+    raw = token[len("v2:") :]
+    # 解码 → 翻转最后一个字节 → 重新编码
+    data = bytearray(b64.urlsafe_b64decode(raw.encode("ascii")))
+    data[-1] ^= 0xFF
+    tampered = "v2:" + b64.urlsafe_b64encode(bytes(data)).decode("ascii")
+    assert crypto.decrypt(tampered) == ""
+
+
+def test_legacy_v1_decrypt_compat() -> None:
+    """历史 v1 格式仍可解密（平滑迁移，不清空用户已有配置）。"""
+    import base64 as b64
+    import hashlib
+
+    plain = "sk-legacy-key-999"
+    master = crypto._master_secret()
+
+    # 按 v1 算法手工构造一条密文
+    salt = b"0123456789abcdef"
+    nonce = b"fedcba9876543210"
+    key = hashlib.pbkdf2_hmac("sha256", master, salt, crypto._V1_ITERATIONS, dklen=32)
+    data = plain.encode("utf-8")
+    stream = crypto._v1_keystream(key, nonce, len(data))
+    cipher = bytes(a ^ b for a, b in zip(data, stream, strict=False))
+    token = "v1:" + b64.urlsafe_b64encode(salt + nonce + cipher).decode("ascii")
+
+    assert crypto.decrypt(token) == plain, "v1 历史密文必须仍能解密"
+
+
+def test_bare_fernet_token_tolerated() -> None:
+    """无前缀的裸 Fernet token 也能解（容错手工写入）。"""
+    token = crypto.encrypt("sk-bare-token")
+    bare = token[len("v2:") :]
+    assert crypto.decrypt(bare) == "sk-bare-token"
 
 
 def test_mask_helper() -> None:

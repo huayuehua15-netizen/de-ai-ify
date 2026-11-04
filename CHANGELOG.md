@@ -10,7 +10,6 @@
 - 批量任务 `/batch`（进度持久化、部分失败、刷新恢复）
 - Web 端 `/lexicon` 词库管理页、`/history` 历史页
 - CLI 完整命令集（`analyze` / `rewrite` / `batch` / `lex` / `models` / `serve`）
-- 供应商密钥加密迁移到 `cryptography.Fernet`（见 SECURITY.md 已知限制）
 - Docker 镜像（`docker/Dockerfile.api`、`docker/Dockerfile.web`）
 
 ## [0.1.0] - 2026-11-04
@@ -62,6 +61,9 @@
 
 ### 修复
 
+- **供应商密钥加密迁移到 `cryptography.Fernet`**（AES-128-CBC + HMAC-SHA256，带认证）。
+  原实现是标准库手工拼装的流密码构造，非审计实现；新格式以 `v2:` 标识，
+  历史 `v1:` 密文保留只读兼容，下次保存时自动升级。新增篡改检测、旧格式兼容等测试
 - `/models` 探测串行阻塞事件循环，导致首屏 `health`/`styles` 被代理掐断（改为并行 + 线程池 + 30s 缓存）
 - Ollama 客户端未设 `trust_env=False`，系统代理把 127.0.0.1 请求误路由进代理
 - provider 注册表全表 `clear()` 造成启动预热与请求的竞态（改为只淘汰同 provider 旧签名）
@@ -70,7 +72,7 @@
 
 ### 已知问题
 
-- 供应商密钥加密非审计实现，不防本机文件系统攻击者（详见 SECURITY.md）
+- 主密钥存于本机（`.deaiify-secret` 或 `DEAIIFY_SECRET_KEY`），因此加密不防本机文件系统攻击者（详见 SECURITY.md 边界说明）
 - 英文文本不做文体细分
 - 混合文体按优先级取第一个识别结果
 - `corpus/` 语料未按文体分层
