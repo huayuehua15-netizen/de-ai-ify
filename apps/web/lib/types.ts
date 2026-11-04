@@ -105,6 +105,14 @@ export interface ProviderOut {
   models: ModelOut[];
 }
 
+export interface ProvidersHealth {
+  ready: boolean;
+  source: "ui" | "env" | "none";
+  count: number;
+  default: string | null;
+  env_fallback: boolean;
+}
+
 export interface HealthData {
   service: string;
   version: string;
@@ -113,6 +121,7 @@ export interface HealthData {
   python: string;
   db: { status: string; dialect?: string; detail?: string };
   redis: { status: string; detail?: string };
+  providers: ProvidersHealth;
   time: number;
 }
 
