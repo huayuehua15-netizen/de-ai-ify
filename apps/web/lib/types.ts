@@ -130,6 +130,58 @@ export interface ApiErrorBody {
   error: { code: string; message: string; request_id: string };
 }
 
+/* —— 词库（M4）—— */
+
+export type MatchMode = "exact" | "regex" | "contains";
+
+export interface LexiconTerm {
+  id: string;
+  term: string;
+  layer: string;
+  match_mode: MatchMode;
+  weight: number;
+  replacement: string | null;
+  enabled: boolean;
+}
+
+export interface Lexicon {
+  id: string;
+  name: string;
+  description: string | null;
+  lang: string;
+  terms: LexiconTerm[];
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface BuiltinInfo {
+  total: number;
+  disabled: string[];
+}
+
+/* —— 改写历史（M4）—— */
+
+export interface HistoryItem {
+  id: string;
+  style: string;
+  model: string;
+  lang: string;
+  score_before: number;
+  score_after: number;
+  delta: number;
+  text_len: number;
+  text_hash: string;
+  /** 仅 optin 模式可能非空；never 模式恒为 null（隐私承诺） */
+  stored_text: string | null;
+  created_at: string | null;
+  expires_at: string | null;
+}
+
+export interface ClearResult {
+  deleted: number;
+  store_mode: string;
+}
+
 /* —— SSE 事件载荷（docs §7.3）—— */
 
 export interface SseStart {

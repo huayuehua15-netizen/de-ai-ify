@@ -6,8 +6,12 @@
 import type {
   AnalysisResult,
   ApiErrorBody,
+  BuiltinInfo,
+  ClearResult,
   ConnectivityResult,
   HealthData,
+  HistoryItem,
+  Lexicon,
   ProviderConfig,
   ProviderOut,
   ProviderPreset,
@@ -132,4 +136,98 @@ export function testProviderDraft(body: {
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/* —— 词库（M4）—— */
+
+export function fetchLexicons(): Promise<Lexicon[]> {
+  return request<Lexicon[]>("/api/v1/lexicons");
+}
+
+export function fetchLexicon(id: string): Promise<Lexicon> {
+  return request<Lexicon>(`/api/v1/lexicons/${id}`);
+}
+
+export function createLexicon(body: {
+  name: string;
+  description?: string | null;
+  lang?: string;
+  terms?: Array<Record<string, unknown>>;
+}): Promise<Lexicon> {
+  return request<Lexicon>("/api/v1/lexicons", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateLexicon(
+  id: string,
+  body: { name?: string; description?: string | null; lang?: string },
+): Promise<Lexicon> {
+  return request<Lexicon>(`/api/v1/lexicons/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteLexicon(id: string): Promise<void> {
+  return request<void>(`/api/v1/lexicons/${id}`, { method: "DELETE" });
+}
+
+export function addLexiconTerms(
+  id: string,
+  terms: Array<Record<string, unknown>>,
+): Promise<Lexicon> {
+  return request<Lexicon>(`/api/v1/lexicons/${id}/terms`, {
+    method: "POST",
+    body: JSON.stringify({ terms }),
+  });
+}
+
+export function deleteLexiconTerm(id: string, termId: string): Promise<void> {
+  return request<void>(`/api/v1/lexicons/${id}/terms/${termId}`, { method: "DELETE" });
+}
+
+export function importLexicon(
+  id: string,
+  format: "csv" | "json",
+  content: string,
+): Promise<Lexicon> {
+  return request<Lexicon>(`/api/v1/lexicons/${id}/import`, {
+    method: "POST",
+    body: JSON.stringify({ format, content }),
+  });
+}
+
+/** 导出为文本（CSV/JSON）——直接拿原始响应体，不走 JSON 解析。 */
+export async function exportLexicon(id: string, format: "csv" | "json"): Promise<string> {
+  const res = await fetch(`/api/v1/lexicons/${id}/export?format=${format}`);
+  if (!res.ok) {
+    throw new ApiError("export_failed", `导出失败 HTTP ${res.status}`, res.status);
+  }
+  return await res.text();
+}
+
+export function fetchBuiltinInfo(): Promise<BuiltinInfo> {
+  return request<BuiltinInfo>("/api/v1/lexicons/builtin");
+}
+
+export function setBuiltinDisabled(
+  terms: string[],
+  disabled: boolean,
+): Promise<{ disabled: string[] }> {
+  return request<{ disabled: string[] }>("/api/v1/lexicons/builtin/disabled", {
+    method: "PUT",
+    body: JSON.stringify({ terms, disabled }),
+  });
+}
+
+/* —— 改写历史（M4）—— */
+
+export function fetchHistory(limit = 50): Promise<HistoryItem[]> {
+  return request<HistoryItem[]>(`/api/v1/history?limit=${limit}`);
+}
+
+export function clearHistory(): Promise<ClearResult> {
+  return request<ClearResult>("/api/v1/history", { method: "DELETE" });
 }
