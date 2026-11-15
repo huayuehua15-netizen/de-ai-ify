@@ -1,0 +1,68 @@
+# de-ai-ify Web 镜像（Next.js 16 standalone）
+#
+# 三阶段：
+#   deps     —— 只装依赖（命中缓存）
+#   builder  —— 构建 standalone 产物
+#   runtime  —— 只带 standalone + static + public，镜像最小
+#
+# 构建上下文是仓库根；Next 在 monorepo 里的 standalone 输出路径是
+# apps/web/.next/standalone（含 apps/web/server.js 与精简 node_modules）。
+#
+# 注意：不使用 `# syntax=docker/dockerfile:1`（会去 Docker Hub 拉 frontend，
+# 受限网络下直接失败）。本文件只用到基础指令。
+
+# 基础镜像可覆盖（受限网络下指向镜像站）
+ARG NODE_IMAGE=node:22-alpine
+
+FROM ${NODE_IMAGE} AS base
+RUN corepack enable
+
+# —— 依赖 ——
+FROM base AS deps
+WORKDIR /repo
+
+# pnpm 版本由 package.json 的 packageManager 决定；这里显式启用 corepack
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json ./apps/web/
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
+
+# —— 构建 ——
+FROM base AS builder
+WORKDIR /repo
+COPY --from=deps /repo/node_modules ./node_modules
+COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
+COPY . .
+
+# 关键：rewrites 的目标在 **构建期** 求值（next.config.ts 读 process.env），
+# 运行期再设环境变量无效——不在这里指定，容器里会退回默认的
+# 127.0.0.1:8000 而连不上同网络的 api 服务（实测踩过）。
+ARG API_PROXY_TARGET=http://api:8000
+ENV API_PROXY_TARGET=${API_PROXY_TARGET}
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN pnpm --filter web build
+
+# —— 运行 ——
+FROM base AS runtime
+WORKDIR /app
+
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+
+RUN addgroup -g 10001 -S nodejs && adduser -S -u 10001 -G nodejs nextjs
+
+# standalone 内含精简 node_modules 与 server.js（monorepo 保留 apps/web 层级）
+COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/public ./apps/web/public
+
+USER nextjs
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD node -e "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+# monorepo standalone 的入口在 apps/web/server.js
+CMD ["node", "apps/web/server.js"]

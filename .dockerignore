@@ -1,0 +1,52 @@
+# —— 通用 ——
+.git
+.gitignore
+.github
+node_modules
+**/node_modules
+.venv
+**/.venv
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.pytest-tmp
+_tmpdata
+.uvwork
+.pnpm-data
+.acl-recovery
+.probe-dir
+
+# —— 构建产物 ——
+.next
+**/.next
+out
+build
+dist
+coverage
+*.tsbuildinfo
+
+# —— 运行数据与密钥（绝不进镜像）——
+.env
+.env.*
+!.env.example
+data
+*.db
+*.sqlite
+*.sqlite3
+.deaiify-secret
+**/.deaiify-secret
+
+# —— 编辑器/系统 ——
+.DS_Store
+Thumbs.db
+.idea
+*.swp
+*.log
+
+# —— 文档（镜像不需要）——
+docs
+corpus
+*.md
+!README.md

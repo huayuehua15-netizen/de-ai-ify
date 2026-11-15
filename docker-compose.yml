@@ -1,8 +1,18 @@
-# de-ai-ify 标准栈（§3.3）：开发用 db+redis 子集，生产全栈见 docs/DEVELOPMENT.md §12.2
-# 本机镜像已备齐（postgres:15-alpine / redis:7-alpine），无需拉取 Docker Hub
+# de-ai-ify 部署编排（docs §12.2）
+#
+# 两种用法：
+#   1) 开发只用存储：  docker compose up -d db redis
+#      （API/Web 留在宿主机热重载，见 docs §12.1）
+#   2) 生产全栈：      docker compose --profile full up -d --build
+#      （api + web + db + redis 一条命令）
+#
+# 端口刻意避开常见冲突：PG 5433、Redis 6380（§2.3 D）。
+# api/web 默认只绑 127.0.0.1，需要对外时改 ports 并务必配置 DEAIIFY_API_KEY。
+
 name: deaiify
 
 services:
+  # —— 存储（开发与生产都需要）——
   db:
     image: postgres:15-alpine
     container_name: deaiify-db
@@ -12,7 +22,7 @@ services:
       POSTGRES_PASSWORD: deaiify
       POSTGRES_DB: deaiify
     ports:
-      - "127.0.0.1:5433:5432" # 避让标准 5432（§2.3 D）
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -27,7 +37,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "127.0.0.1:6380:6379" # 6379 被其他项目容器占用（§2.3 D）
+      - "127.0.0.1:6380:6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -36,8 +46,61 @@ services:
       timeout: 3s
       retries: 10
 
-  # api / web 镜像构建在 M5 补充（docker/Dockerfile.api、docker/Dockerfile.web）
+  # —— 应用（profile: full）——
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: deaiify-api
+    restart: unless-stopped
+    profiles: ["full"]
+    environment:
+      DEAIIFY_ENV: prod
+      # 容器内走服务名；对外暴露的端口映射保持 127.0.0.1:8000
+      DEAIIFY_DATABASE_URL: postgresql+asyncpg://deaiify:deaiify@db:5432/deaiify
+      DEAIIFY_REDIS_URL: redis://redis:6379/0
+      DEAIIFY_HOST: 0.0.0.0
+      # —— 隐私（默认不保存原文）——
+      DEAIIFY_STORE: ${DEAIIFY_STORE:-never}
+      # —— 鉴权：对外暴露时务必设置 ——
+      DEAIIFY_API_KEY: ${DEAIIFY_API_KEY:-}
+      # —— 模型：可留空，改用 Web 的「模型设置」页配置 ——
+      DEAIIFY_OPENAI_API_KEY: ${DEAIIFY_OPENAI_API_KEY:-}
+      DEAIIFY_OPENAI_BASE_URL: ${DEAIIFY_OPENAI_BASE_URL:-}
+      DEAIIFY_ANTHROPIC_API_KEY: ${DEAIIFY_ANTHROPIC_API_KEY:-}
+      DEAIIFY_DEFAULT_MODEL: ${DEAIIFY_DEFAULT_MODEL:-}
+      # 密钥加密主密钥：不设则容器内自动生成（重建容器后旧 key 解不开！）
+      DEAIIFY_SECRET_KEY: ${DEAIIFY_SECRET_KEY:-}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # 持久化自动生成的加密主密钥与 lite 模式数据
+      - deaiify-data:/app/data
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+      args:
+        # rewrites 目标在构建期固化进产物，必须在这里传（运行时 env 无效）
+        API_PROXY_TARGET: http://api:8000
+    container_name: deaiify-web
+    restart: unless-stopped
+    profiles: ["full"]
+    environment:
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata:
   redisdata:
+  deaiify-data:

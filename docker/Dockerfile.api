@@ -1,0 +1,70 @@
+# de-ai-ify API 镜像（FastAPI + 评分引擎）
+#
+# 多阶段构建：
+#   builder  —— 用 uv 在虚拟环境里装依赖（含编译工具，仅构建期需要）
+#   runtime  —— 只拷贝 venv 与源码，不含编译器，体积更小、攻击面更少
+#
+# 构建上下文是仓库根（见 docker-compose 的 context: .），
+# 这样能同时访问 apps/api 与 corpus/（corpus 供 CLI/回归场景使用）。
+#
+# 注意：不使用 `# syntax=docker/dockerfile:1` —— 该指令会在构建时去
+# Docker Hub 拉 frontend 镜像，在无外网/受限环境会直接失败。
+# 本文件只用到最基础的 FROM/COPY/RUN，无需扩展语法。
+
+# 基础镜像可覆盖（受限网络下可指向镜像站，如 docker.m.daocloud.io/library/python）
+ARG PYTHON_IMAGE=python:3.13-slim
+
+FROM ${PYTHON_IMAGE} AS builder
+
+# 装 uv（用 pip 而非 COPY --from=ghcr.io/astral-sh/uv —— 后者依赖 ghcr 可达，
+# 受限网络下会失败；pip 走 PyPI 或镜像源更可靠）
+ARG PIP_INDEX_URL=
+ENV PIP_INDEX_URL=${PIP_INDEX_URL}
+
+RUN pip install --no-cache-dir uv
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never
+
+WORKDIR /app
+
+# 先只拷依赖清单：依赖未变时可命中层缓存，改代码不必重装依赖
+COPY apps/api/pyproject.toml apps/api/uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
+
+# 再拷源码并安装项目本身
+COPY apps/api/src ./src
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+# ------------------------------------------------------------
+
+FROM python:3.13-slim AS runtime
+
+# 非 root 运行
+RUN useradd --create-home --uid 10001 deaiify
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/app/.venv/bin:$PATH"
+
+WORKDIR /app
+
+COPY --from=builder --chown=deaiify:deaiify /app/.venv /app/.venv
+COPY --chown=deaiify:deaiify apps/api/src ./src
+
+# lite 模式的 SQLite 落盘目录（挂 volume 可持久化）
+RUN mkdir -p /app/data && chown deaiify:deaiify /app/data
+
+USER deaiify
+
+EXPOSE 8000
+
+# 容器内必须绑 0.0.0.0（容器外部才可达）；对外暴露范围由 compose 的 ports 控制
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request,sys; \
+sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=4).status==200 else 1)"
+
+CMD ["uvicorn", "deaiify.main:app", "--host", "0.0.0.0", "--port", "8000"]

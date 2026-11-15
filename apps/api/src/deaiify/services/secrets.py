@@ -36,7 +36,26 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
-_SECRET_FILE = Path(__file__).resolve().parents[5] / ".deaiify-secret"
+def _secret_file() -> Path:
+    """主密钥文件位置：优先 DEAIIFY_SECRET_FILE，否则在"项目根"下找。
+
+    不能写死 `parents[N]` —— 源码树（apps/api/src/deaiify/services）与
+    容器镜像（/app/src/deaiify/services）的层级深度不同，写死会在其中
+    一种环境里抛 IndexError（实测踩过）。
+    这里从当前文件向上找，取第一个含 pyproject.toml 或 .git 的目录。
+    """
+    env_path = os.getenv("DEAIIFY_SECRET_FILE")
+    if env_path:
+        return Path(env_path).expanduser()
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").exists() or (parent / ".git").exists():
+            return parent / ".deaiify-secret"
+    # 兜底：容器内工作目录
+    return Path.cwd() / ".deaiify-secret"
+
+
+_SECRET_FILE = _secret_file()
 
 _V2_PREFIX = "v2:"
 _V1_PREFIX = "v1:"
