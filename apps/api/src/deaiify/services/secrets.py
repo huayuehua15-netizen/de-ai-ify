@@ -36,6 +36,7 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
+
 def _secret_file() -> Path:
     """主密钥文件位置：优先 DEAIIFY_SECRET_FILE，否则在"项目根"下找。
 
