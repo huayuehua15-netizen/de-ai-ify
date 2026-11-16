@@ -991,7 +991,7 @@ jobs:
 **交付**：§11 全部 CLI 命令、docker-compose（双 profile）、README（中英）、CONTRIBUTING、SECURITY、LICENSE、CHANGELOG、CI 完整版、GHCR 镜像。
 **验收**：
 - [ ] 干净机器 `docker compose -p deaiify up -d`（api+web+db+redis 全栈）≤5 分钟可评分；
-- [ ] `deaiify analyze/rewrite/lex/doctor` 四命令通过；
+- [x] `deaiify analyze/rewrite/lex/doctor` 四命令通过（另含 batch/models/serve/version）；
 - [ ] README 快速开始逐条复制可跑（含无 Docker 与有 Docker 两条路径）。
 
 ---
