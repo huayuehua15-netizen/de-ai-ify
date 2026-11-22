@@ -57,3 +57,10 @@ npm-debug.log*
 pnpm-debug.log*
 
 apps/api/.probe-dir/
+
+# 构建日志（本地排查用）
+*.log.err
+_build-*
+
+# 临时提交信息文件
+_commitmsg.txt

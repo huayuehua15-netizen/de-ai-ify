@@ -51,6 +51,11 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
+      args:
+        # 受限网络下把这两个指向镜像源可让构建从 40+ 分钟降到分钟级
+        # 例：UV_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+        UV_INDEX_URL: ${UV_INDEX_URL:-}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
     container_name: deaiify-api
     restart: unless-stopped
     profiles: ["full"]

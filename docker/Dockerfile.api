@@ -18,10 +18,17 @@ FROM ${PYTHON_IMAGE} AS builder
 
 # 装 uv（用 pip 而非 COPY --from=ghcr.io/astral-sh/uv —— 后者依赖 ghcr 可达，
 # 受限网络下会失败；pip 走 PyPI 或镜像源更可靠）
+#
+# UV_INDEX_URL / PIP_INDEX_URL 可覆盖：受限网络下直连 PyPI 会慢到不可用
+# （实测一次构建卡 40+ 分钟），指向镜像源可降到分钟级。
+# 例：--build-arg UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ARG PIP_INDEX_URL=
-ENV PIP_INDEX_URL=${PIP_INDEX_URL}
+ARG UV_INDEX_URL=
+ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    UV_INDEX_URL=${UV_INDEX_URL} \
+    UV_HTTP_TIMEOUT=120
 
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir "uv>=0.5,<1"
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -30,18 +37,22 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /app
 
 # 先只拷依赖清单：依赖未变时可命中层缓存，改代码不必重装依赖
+# cache id 带版本后缀：并行/中断的构建会留下 .lock 文件，换 id 可避开
+# "Timeout when waiting for lock"（实测踩过，会把构建卡死在 300s 超时）
 COPY apps/api/pyproject.toml apps/api/uv.lock ./
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,target=/root/.cache/uv,id=uv-api-v2 \
     uv sync --frozen --no-dev --no-install-project
 
 # 再拷源码并安装项目本身
 COPY apps/api/src ./src
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,target=/root/.cache/uv,id=uv-api-v2 \
     uv sync --frozen --no-dev
 
 # ------------------------------------------------------------
 
-FROM python:3.13-slim AS runtime
+# ARG 必须在本阶段重新声明才可用（Dockerfile 的 ARG 作用域限于单个 FROM 之后）
+ARG PYTHON_IMAGE=python:3.13-slim
+FROM ${PYTHON_IMAGE} AS runtime
 
 # 非 root 运行
 RUN useradd --create-home --uid 10001 deaiify

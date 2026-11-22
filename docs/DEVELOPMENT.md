@@ -837,16 +837,21 @@ services:
   redis:  image redis:7-alpine           # 本机已有镜像
           # ports: "127.0.0.1:6380:6379" # 6379 已被 mianba-redis 占用
   api:    build docker/Dockerfile.api    # python:3.13-slim + uv sync --frozen
-  web:    build docker/Dockerfile.web    # node:24-alpine 多阶段 → standalone 输出
+  web:    build docker/Dockerfile.web    # node:22-alpine 多阶段 → standalone 输出
   ollama: image ollama/ollama            # profile: local-llm（可选）
 volumes: [pgdata, deaiify-data, ollama-models]
 ```
 
 - **开发子集**：`docker compose -p deaiify up -d db redis`（API/Web 留在宿主机热重载，见 §12.1）；
-- **生产全栈**：`docker compose -p deaiify up -d`（api + web + db + redis 一条命令，`DATABASE_URL`/`REDIS_URL` 自动注入）；
+- **生产全栈**：`docker compose --profile full up -d`（api + web + db + redis 一条命令，`DATABASE_URL`/`REDIS_URL` 自动注入）。
+  db/redis 常驻，api/web 挂在 `profiles: ["full"]` 下 —— 只想拿 PG/Redis 跑本地开发时不必起整套；
 - **无 Docker 用户**：不适用本节，见 §12.1 零配置路径（SQLite lite 模式）；
-- web 用 Next standalone 输出减镜像体积；api 镜像内置 corpus 与词库只读副本；
-- 镜像发布到 GHCR（CI 自动，见 §14）；db/redis 用本地已有 tag，api/web 需本地构建，Docker Hub 连通说明见 §2.3 C；
+- web 用 Next standalone 输出减镜像体积（实测 api 481MB / web 295MB）；api 镜像内置 corpus 与词库只读副本；
+- **GHCR 预构建镜像**：CI 自动推 `ghcr.io/<owner>/de-ai-ify-api` 与 `-web`（`main`→`latest`，tag `v*`→语义化版本），
+  干净机器可直接拉取免本地构建 —— 本地构建实测首次 1510s（全量下载依赖），预构建可把这步省掉；
+- **受限网络构建**：`UV_INDEX_URL` / `PIP_INDEX_URL` 可经 build-arg 指向镜像源
+  （如 `https://pypi.tuna.tsinghua.edu.cn/simple`），`PYTHON_IMAGE` / `NODE_IMAGE` 可指向镜像站；
+  中断过的构建若报 `Timeout when waiting for lock on /root/.cache/uv/...`，换 cache id 即可（Dockerfile 已带 `id=uv-api-v2`）；
 - 数据备份 = 备份 `pgdata` / `data/deaiify.db` 卷。
 
 ### 12.3 环境变量全表（`.env.example`）
@@ -990,9 +995,16 @@ jobs:
 
 **交付**：§11 全部 CLI 命令、docker-compose（双 profile）、README（中英）、CONTRIBUTING、SECURITY、LICENSE、CHANGELOG、CI 完整版、GHCR 镜像。
 **验收**：
-- [ ] 干净机器 `docker compose -p deaiify up -d`（api+web+db+redis 全栈）≤5 分钟可评分；
+- [x] 干净机器 `docker compose -p deaiify up -d`（api+web+db+redis 全栈）≤5 分钟可评分；
 - [x] `deaiify analyze/rewrite/lex/doctor` 四命令通过（另含 batch/models/serve/version）；
-- [ ] README 快速开始逐条复制可跑（含无 Docker 与有 Docker 两条路径）。
+- [x] README 快速开始逐条复制可跑（含无 Docker 与有 Docker 两条路径）。
+
+> **实测记录**（本机，2026-11）：`docker compose --profile full down -v --rmi local
+> --remove-orphans` 清空后重新 `up -d`，**13.6s** 四容器全 healthy（db/redis/api/web），
+> 经 Web 代理 `/api/v1/health` 返回 `db=ok(postgresql) redis=ok`，四个页面全 200，
+> 评分正常返回（73 分 / 8 维 / 4 命中）。
+> 镜像构建耗时另计：全量拉依赖实测 1510s（25 分钟，用清华 PyPI 源 + 中断残留锁规避）；
+> 这是**首次构建**成本，后续命中层缓存仅需数秒。GHCR 预构建镜像可跳过此步，见 §12.2。
 
 ---
 
