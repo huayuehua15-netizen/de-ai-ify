@@ -7,7 +7,7 @@
 可解释的 AI 文本评分与改写工具：先评分解释，再一键改写，最后重新评分验证。
 
 [![CI](https://github.com/huayuehua15-netizen/de-ai-ify/actions/workflows/ci.yml/badge.svg)](https://github.com/huayuehua15-netizen/de-ai-ify/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/tag/huayuehua15-netizen/de-ai-ify?label=release&color=blue)](https://github.com/huayuehua15-netizen/de-ai-ify/tags)
+[![Release](https://img.shields.io/github/v/release/huayuehua15-netizen/de-ai-ify?label=release&color=blue)](https://github.com/huayuehua15-netizen/de-ai-ify/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/GHCR-api%20%2F%20web-2496ED?logo=docker&logoColor=white)](https://github.com/huayuehua15-netizen/de-ai-ify/pkgs/container/de-ai-ify-api)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
@@ -63,42 +63,7 @@
 
 ## 架构
 
-```mermaid
-flowchart TB
-    subgraph 入口
-        Web["Next.js 16 Web"]
-        API["REST API /api/v1"]
-        CLI["CLI · Typer"]
-    end
-
-    subgraph 核心引擎
-        Analyze["评分引擎 · 8 维"]
-        Rewrite["改写管线"]
-        Gate["质量闸门 · 复评分"]
-    end
-
-    subgraph 模型适配
-        OpenAI["OpenAI 兼容"]
-        Anthropic["Anthropic"]
-        Ollama["Ollama"]
-    end
-
-    DB[("PostgreSQL / SQLite")]
-    Queue["批量队列 · 进程内"]
-
-    Web --> API
-    API --> Analyze
-    API --> Rewrite
-    CLI --> Analyze
-    CLI --> Rewrite
-    Rewrite --> Gate
-    Gate --> Analyze
-    Rewrite --> OpenAI
-    Rewrite --> Anthropic
-    Rewrite --> Ollama
-    API --> DB
-    API --> Queue
-```
+<img src="docs/assets/architecture.png" alt="架构：Web / API / CLI → 8 维评分引擎 → 改写管线 → 质量闸门 → 模型供应商；PostgreSQL / SQLite 持久化" width="100%" />
 
 技术栈：Next.js 16 / React 19 / TypeScript / Tailwind CSS 4；FastAPI / SQLAlchemy 2 / Python 3.13；
 PostgreSQL 15 + Redis 7（标准栈）或 SQLite（lite 模式）；Docker Compose + GitHub Actions + GHCR。

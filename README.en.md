@@ -7,7 +7,7 @@
 An explainable AI-text scorer and rewriter: score, explain, rewrite, then verify with a second score.
 
 [![CI](https://github.com/huayuehua15-netizen/de-ai-ify/actions/workflows/ci.yml/badge.svg)](https://github.com/huayuehua15-netizen/de-ai-ify/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/tag/huayuehua15-netizen/de-ai-ify?label=release&color=blue)](https://github.com/huayuehua15-netizen/de-ai-ify/tags)
+[![Release](https://img.shields.io/github/v/release/huayuehua15-netizen/de-ai-ify?label=release&color=blue)](https://github.com/huayuehua15-netizen/de-ai-ify/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/GHCR-api%20%2F%20web-2496ED?logo=docker&logoColor=white)](https://github.com/huayuehua15-netizen/de-ai-ify/pkgs/container/de-ai-ify-api)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
@@ -62,42 +62,7 @@ Streaming example: 77 → 55, delta -22, gate pass
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    subgraph Entry
-        Web["Next.js 16 Web"]
-        API["REST API /api/v1"]
-        CLI["CLI · Typer"]
-    end
-
-    subgraph Core
-        Analyze["Scoring engine · 8 dimensions"]
-        Rewrite["Rewrite pipeline"]
-        Gate["Quality gate · rescore"]
-    end
-
-    subgraph Providers
-        OpenAI["OpenAI-compatible"]
-        Anthropic["Anthropic"]
-        Ollama["Ollama"]
-    end
-
-    DB[("PostgreSQL / SQLite")]
-    Queue["Batch queue · in-process"]
-
-    Web --> API
-    API --> Analyze
-    API --> Rewrite
-    CLI --> Analyze
-    CLI --> Rewrite
-    Rewrite --> Gate
-    Gate --> Analyze
-    Rewrite --> OpenAI
-    Rewrite --> Anthropic
-    Rewrite --> Ollama
-    API --> DB
-    API --> Queue
-```
+<img src="docs/assets/architecture.png" alt="Architecture: Web / API / CLI to 8-dimension scoring, rewrite pipeline, quality gate and model providers; PostgreSQL / SQLite persistence" width="100%" />
 
 Stack: Next.js 16 / React 19 / TypeScript / Tailwind CSS 4; FastAPI / SQLAlchemy 2 / Python 3.13;
 PostgreSQL 15 + Redis 7 (standard) or SQLite (lite); Docker Compose, GitHub Actions and GHCR.
