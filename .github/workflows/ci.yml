@@ -5,6 +5,15 @@ on:
     branches: [main]
   pull_request:
 
+# uv 版本策略：
+#   setup-uv 的 version 默认是 "latest"，意味着上游每次发版都会静默改变我们的构建环境。
+#   2026-11-17 的 uv 0.13.9 上线后，python / api-int 两个 job 的 `uv sync --frozen` 开始失败，
+#   而这两个 job 的输入（apps/api 代码与 uv.lock）一行都没改——纯环境漂移。
+#   因此这里把版本钉死；升级 uv 是一次显式的、需要看 CI 结果的改动。
+#   uv-latest-probe job 会持续用最新版跑一遍，失败只报警不阻塞，用于提前发现下一次漂移。
+env:
+  UV_VERSION: "0.13.5"
+
 jobs:
   python:
     runs-on: ubuntu-latest
@@ -15,6 +24,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
+          version: ${{ env.UV_VERSION }}
           python-version: "3.13"
       - run: uv sync --frozen
       - run: uv run ruff check src tests
@@ -51,9 +61,44 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
+          version: ${{ env.UV_VERSION }}
           python-version: "3.13"
       - run: uv sync --frozen
       - run: uv run pytest
+
+  # 环境漂移探针：用最新 uv 跑一次 uv sync --frozen。
+  # 成功 → 说明可以升级 UV_VERSION；失败 → annotation 里能看到真实报错，且因为
+  # continue-on-error 不会把主分支刷红。注意日志接口对无 admin 权限的 token 是 403，
+  # 所以这里把关键输出转成 ::error:: / ::warning:: 写进 check-run annotations。
+  uv-latest-probe:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - name: uv --version
+        run: uv --version
+      - name: uv sync --frozen (latest uv)
+        run: |
+          set +e
+          uv sync --frozen > /tmp/sync.log 2>&1
+          code=$?
+          cat /tmp/sync.log
+          if [ $code -ne 0 ]; then
+            echo "::error::uv sync --frozen failed with latest uv ($(uv --version))"
+            # annotation 单条上限约 64KB，这里只发前 40 行，足够定位
+            head -40 /tmp/sync.log | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+          else
+            echo "::warning::latest uv ($(uv --version)) works — UV_VERSION can be bumped to it"
+          fi
+          exit $code
 
   web:
     runs-on: ubuntu-latest
@@ -73,4 +118,4 @@ jobs:
       - run: pnpm --filter web exec tsc --noEmit
       - run: pnpm --filter web test
 
-  # e2e（Playwright，M3）与 docker 镜像构建（M5）后续补充
+  # e2e（Playwright，M3）后续补充；镜像构建见 .github/workflows/docker.yml
