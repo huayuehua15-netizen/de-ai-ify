@@ -9,7 +9,7 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <span className="text-lg font-semibold tracking-tight">de-ai-ify</span>
             <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
-              M3 编辑器 · 开发中
+              可解释评分 · 本地引擎
             </span>
           </div>
           <HealthBadge />

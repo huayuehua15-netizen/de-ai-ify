@@ -1,6 +1,6 @@
 [project]
 name = "deaiify"
-version = "0.1.0"
+version = "0.2.0"
 description = "去 AI 味：可解释的 AI 文本评分与改写引擎（de-ai-ify 后端 / CLI）"
 license = "MIT"
 requires-python = ">=3.13"

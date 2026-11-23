@@ -5,8 +5,11 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-23
+
 ### 新增
 
+- 供应商预设新增「商汤日日新 Token Plan」（`https://token.sensenova.cn/v1`，OpenAI 兼容；该网关同时路由 deepseek/kimi/glm 等模型），预设总数 10 个
 - 批量任务 `POST /batch` + `GET /batch/{job_id}`（进度持久化、部分失败、刷新恢复、服务重启对账）
 - Web 端 `/batch` 批量页（粘贴多段或选多文件、900ms 轮询、job_id 写进 URL、逐条结果表）
 - Playwright e2e 冒烟 22 例（`apps/web/e2e/`），接进 CI 的 `web` job
@@ -24,6 +27,9 @@
   重新生成随机密钥 → 存入即失效。改为进程内缓存 + 多级落点 + 写 hex + 显式 `DEAIIFY_SECRET_FILE`
 - **供应商默认模型未生效**：设置页填了 `default_model` 仍报「未指定模型」
 - **`.gitignore` 混入 GBK 字节**导致 hatchling 构建失败（CI 数小时误判，见 docs §14.1）
+- 文档与实现对齐：明确限流与批量队列均为进程内实现、Redis 当前只做健康检查；删除未落地的 `packages/api-types` 代码生成声明
+- 主界面移除「开发中」标记，替换为「可解释评分 · 本地引擎」
+- README 增加界面截图与 GHCR 预构建镜像用法；`docker-compose.yml` 支持直接拉取预构建镜像
 
 ## [0.1.0] - 2026-11-04
 
