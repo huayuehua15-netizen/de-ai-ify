@@ -101,10 +101,16 @@ export function Editor({
     return () => ro.disconnect();
   }, [syncMetrics]);
 
-  /** 点击/选中高亮区域 → 按光标位置反查 finding（等价于"点 mark 选卡片"）。 */
+  /** 点击/选中高亮区域 → 按光标位置反查 finding（等价于"点 mark 选卡片"）。
+   *
+   * 只在**光标收拢**（selectionStart === selectionEnd）时响应：那才是"点了一下"。
+   * 若用户是拖选或 Ctrl+A 全选，选区是区间，此时若还去反查并跳转，
+   * 下面的 activeKey effect 会把选区强行改窄到那个 finding ——
+   * 表现为"全选后按删除，只删掉了第一个命中的片段"。 */
   const handleSelect = useCallback(() => {
     const ta = textareaRef.current;
     if (!ta || !inSync) return;
+    if (ta.selectionStart !== ta.selectionEnd) return;
     const pos = ta.selectionStart;
     const hit = findings.find((f) => pos >= f.start && pos <= f.end);
     if (hit) onFindingClick(hit);
@@ -147,6 +153,7 @@ export function Editor({
       <div
         ref={overlayRef}
         aria-hidden
+        data-testid="editor-overlay"
         className={`pointer-events-none absolute inset-0 overflow-hidden text-transparent ${TYPO}`}
         style={{ paddingRight: 20 }}
       >

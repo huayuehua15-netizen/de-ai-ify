@@ -912,7 +912,7 @@ DEAIIFY_REWRITE_TIMEOUT_S=120
 | 服务层 | pytest-asyncio + respx | 改写流程、质量闸门重试、SSE 事件顺序、模型超时/429/5xx |
 | API 契约 | httpx TestClient | 全端点 schema、错误码、鉴权开关 |
 | 前端单测 | Vitest | sse 解析器、diff 渲染、overlay 对齐纯函数 |
-| E2E 冒烟 | Playwright | 首屏评分 → 改写 → diff → 采纳；隐私模式下断言**无原文写库请求** |
+| E2E 冒烟 | Playwright | 首屏评分与八维、命中联动、overlay 六项排版对齐与滚动同步、万字输入延迟；隐私模式下断言**无原文写库请求** |
 | 性能 | benchmark 脚本 | 1 万字 analyze < 100ms（CI 记录趋势，不做硬门禁） |
 
 ### 13.2 静态质量
@@ -939,15 +939,19 @@ jobs:
   encoding: # 文本文件 UTF-8 校验（见下方「编码陷阱」；其余 job 都 needs 它）
   python:   # ubuntu-latest: uv sync --frozen → ruff → pytest（单测 + corpus 回归，SQLite）
   api-int:  # services: postgres:15-alpine + redis:7-alpine → 集成测试（标准栈路径）
-  web:      # pnpm i --frozen-lockfile → eslint → tsc → vitest → next build
-  e2e:      # playwright（仅 main 分支）：起 api（lite/SQLite 模式）跑冒烟
-  docker:   # 构建 api/web 镜像并推 GHCR（tag 触发）
+  web:      # pnpm i --frozen-lockfile → eslint → tsc → vitest → next build → e2e
+  uv-latest-probe: # 用最新 uv 跑一次 uv sync --frozen（continue-on-error，环境漂移探针）
+  docker:   # 构建 api/web 镜像并推 GHCR（tag 触发）——独立文件 docker.yml
 ```
 
 - 矩阵仅 ubuntu（跨平台由贡献者本地跑，文档标注 Windows 命令）；
 - **发布**：打 `vX.Y.Z` tag → GitHub Release + `CHANGELOG.md` 条目 + GHCR 镜像 `latest`；
 - 版本策略：SemVer；`engine_version` 独立维护（规则变更才算 engine 破坏性变更）；
 - Dependabot：`npm` + `pip` 每月一次。
+- **e2e 为什么不单起一个 job**：它需要的 `pnpm install` + `next build` 已经在 `web`
+  job 里做过了，单起要重付一遍（约 2 分钟）；串在 `web` 末尾只多 35 秒。
+  但 api 与 web 进程要用 `nohup … &` 后台起，并用 curl 轮询到就绪再跑测试
+  （裸 `sleep` 在 runner 上不可靠）。
 
 ### 14.1 编码陷阱：`.gitignore` 必须是合法 UTF-8
 
@@ -1032,6 +1036,31 @@ LocalProtocolError: Illegal header value b'Bearer '
 于是"在设置页填了默认模型"却报「未指定模型」。已改为
 `请求 name > 该供应商 default_model > DEAIIFY_DEFAULT_MODEL`。
 
+### 14.3 编辑器 overlay 的两个隐藏前提（写 e2e 才暴露）
+
+高亮 overlay（ADR-6：透明 textarea 叠在镜像 div 上）有两个前提只在**特定条件下**成立，
+手工点几下测不出来，必须用真实浏览器量。
+
+**前提一：编辑器必须拿到确定高度。** 原来左栏用 `min-h-[480px]`，`textarea` 只有
+`h-full` + `min-h`，于是文本一长就把容器撑高：内容根本不溢出 textarea，
+滚动发生在 `body` 上。后果是 `syncMetrics()` 的滚动条补偿与 `onScroll` 同步全部变成死代码
+（写完就没生效过），并且长文本时右侧评分面板会跟着整页滚走、脱离视野。
+修法是给左栏 `h-[calc(100dvh-19rem)]`，`<Editor>` 外包 `min-h-0 flex-1`。
+**判据**：`textarea.scrollHeight > textarea.clientHeight` 必须为真（有溢出才有对齐可言）。
+
+**前提二：`handleSelect` 必须区分「光标收拢」与「拖选」。** 原实现在光标落入某个
+finding 时无条件高亮并 `setSelectionRange(start, end)`，把选区强行改窄到该片段——
+**全选后按删除只删掉第一个命中片段**（实测 `fill("")` 后残留 26 字）。
+加一行 `if (ta.selectionStart !== ta.selectionEnd) return;` 即可。
+回归用例：`e2e/smoke.spec.ts` 的「全选删除能清空全文」。
+
+**另外两条量测陷阱**（与产品代码无关，但会让人误判成 bug）：
+
+- Chrome/Edge 的**覆盖式滚动条宽度为 0**，`offsetWidth - clientWidth - border` 得到 0 是正常的，
+  不能拿它断言「滚动条补偿生效」。要断的是 `|overlay 内容高 - textarea 内容高| ≤ 1px`。
+- 覆盖式滚动条不占布局宽度，所以 `paddingRight = 20 + scrollbar` 会退化成 20——
+  这个公式对**经典滚动条**（Windows 未开覆盖、Linux 滚动条）才起作用，保留它是对的。
+
 
 ---
 
@@ -1067,10 +1096,30 @@ LocalProtocolError: Illegal header value b'Bearer '
 
 **交付**：主编辑器、高亮 overlay、评分面板、SSE 打字机、多版本 Tabs、Diff、模型/风格选择、空态与错误态。
 **验收**：
-- [ ] Playwright 冒烟全过；
-- [ ] overlay 与 textarea 对齐（视觉回归）；
-- [ ] 未配置模型时评分可用、改写有引导；
-- [ ] 中文 IME 输入、粘贴万字不卡顿（输入延迟 < 50ms）。
+- [x] Playwright 冒烟全过；
+- [x] overlay 与 textarea 对齐（视觉回归）；
+- [x] 未配置模型时评分可用、改写有引导；
+- [x] 中文 IME 输入、粘贴万字不卡顿（输入延迟 < 50ms）。
+
+> **实现注记（2026-11-23）**：`apps/web/e2e/` 两个 spec 共 16 例，接进 CI 的 `web` job。
+>
+> - `smoke.spec.ts`（10 例）：首屏元素齐全 / 粘贴后出总分与八维与命中列表 / 示例文本一键填入 /
+>   命中卡片与原文高亮联动 / 清空复位 / 全选删除能清空全文 / 五个页面可达（4 例）。
+> - `editor.spec.ts`（6 例）：overlay 六项排版对齐（字号/行高/字距/内边距/字体/换行）、
+>   内容区宽度与滚动条补偿、长文本滚动同步、文字透明度与可见性、
+>   万字输入 p95 < 50ms、超长文本明确提示。
+> - **零浏览器下载**：用 `channel: "chrome"` 复用系统/runner 预装的 Chrome，
+>   `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`，额外依赖只有 18MB JS 包。
+> - CI 里 e2e 单独起 API（`lite` 模式：SQLite + 进程内队列，无需 PG/Redis），
+>   `DEAIIFY_RATE_LIMIT_PER_MIN=600`——默认 60 次/分钟会被 16 个用例打爆成 429，
+>   表现为「评分面板不出现」的假失败（实测 200×51 / 429×24）。
+>
+> **本段修掉的两个真实缺陷**（写 e2e 才暴露）：
+> 1. `editor.tsx` `handleSelect` 未区分「光标收拢」与「拖选」——光标落在某个高亮片段时
+>    强行 `setSelectionRange` 到该片段，导致**全选后按删除只删掉第一个命中片段**。
+> 2. `workspace.tsx` 左栏用 `min-h-[480px]` 而非确定高度，textarea 被内容撑高，
+>    滚动跑到 body 上 → overlay 的滚动条补偿与滚动同步全部失效（死代码），
+>    长文本时右侧评分面板还会跟着整页滚走。改为 `h-[calc(100dvh-19rem)]` + `min-h-0 flex-1`。
 
 ### M4 词库 / 隐私 / 批量（3–4 天）
 

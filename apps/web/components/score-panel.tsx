@@ -85,7 +85,10 @@ function ScoreRing({ score, band }: { score: number; band: Band }) {
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={`text-3xl font-semibold tabular-nums ${color.text}`}>
+        <span
+          data-testid="score-value"
+          className={`text-3xl font-semibold tabular-nums ${color.text}`}
+        >
           {score}
         </span>
         <span className="text-[11px] text-zinc-500">AI 味</span>
@@ -118,7 +121,10 @@ export function ScorePanel({
   }
   if (!result) {
     return (
-      <div className="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700">
+      <div
+        data-testid="score-empty"
+        className="rounded-xl border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700"
+      >
         {loading ? "分析中…" : "粘贴文本后自动评分（纯本地，不上传原文）"}
       </div>
     );

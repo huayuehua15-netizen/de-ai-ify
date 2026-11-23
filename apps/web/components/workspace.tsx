@@ -493,7 +493,7 @@ export function Workspace() {
 
       {/* 主区：编辑器 + 评分面板 */}
       <main className="mx-auto grid w-full max-w-7xl flex-1 grid-cols-1 gap-5 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="flex min-h-[480px] flex-col gap-2.5">
+        <div className="flex h-[calc(100dvh-19rem)] min-h-[420px] flex-col gap-2.5">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
               原文
@@ -504,19 +504,24 @@ export function Workspace() {
               )}
             </h2>
           </div>
-          <Editor
-            value={text}
-            findings={analysis?.findings ?? []}
-            analyzedText={analyzedText}
-            activeKey={activeKey}
-            onChange={(v) => {
-              if (!v.trim() && text.trim()) resetAnalysis();
-              setText(v);
-              setActiveKey(null);
-            }}
-            onFindingClick={handleFindingClick}
-            onUseExample={() => setText(EXAMPLE_TEXT)}
-          />
+          {/* 编辑器必须拿到确定高度，否则 textarea 会被内容撑高：
+              滚动条跑到 body 上，overlay 的滚动条补偿与滚动同步全部失效，
+              长文本时右侧评分面板还会跟着整页滚走。 */}
+          <div className="min-h-0 flex-1">
+            <Editor
+              value={text}
+              findings={analysis?.findings ?? []}
+              analyzedText={analyzedText}
+              activeKey={activeKey}
+              onChange={(v) => {
+                if (!v.trim() && text.trim()) resetAnalysis();
+                setText(v);
+                setActiveKey(null);
+              }}
+              onFindingClick={handleFindingClick}
+              onUseExample={() => setText(EXAMPLE_TEXT)}
+            />
+          </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-zinc-500">
             <CharLimit current={text.length} max={maxChars} />
             {analyzing && (

@@ -5,12 +5,21 @@
 
 ## [Unreleased]
 
-### 计划中
+### 新增
 
-- 批量任务 `/batch`（进度持久化、部分失败、刷新恢复）
-- Web 端 `/lexicon` 词库管理页、`/history` 历史页
-- CLI 完整命令集（`analyze` / `rewrite` / `batch` / `lex` / `models` / `serve`）
-- Docker 镜像（`docker/Dockerfile.api`、`docker/Dockerfile.web`）
+- 批量任务 `POST /batch` + `GET /batch/{job_id}`（进度持久化、部分失败、刷新恢复、服务重启对账）
+- Web 端 `/batch` 批量页（粘贴多段或选多文件、900ms 轮询、job_id 写进 URL、逐条结果表）
+- Playwright e2e 冒烟 16 例（`apps/web/e2e/`），接进 CI 的 `web` job
+
+### 修复
+
+- **编辑器全选删除只删第一段**：光标落入高亮片段时无条件 `setSelectionRange` 把选区改窄
+- **编辑器被内容撑高**：左栏用 `min-h` 而非确定高度，textarea 不溢出 → overlay 的滚动条补偿
+  与滚动同步全部失效（死代码），长文本时评分面板跟着整页滚走
+- **Docker 部署下供应商 API Key 存不住**：`/app` 归 root 不可写，主密钥写盘失败时每次调用
+  重新生成随机密钥 → 存入即失效。改为进程内缓存 + 多级落点 + 写 hex + 显式 `DEAIIFY_SECRET_FILE`
+- **供应商默认模型未生效**：设置页填了 `default_model` 仍报「未指定模型」
+- **`.gitignore` 混入 GBK 字节**导致 hatchling 构建失败（CI 数小时误判，见 docs §14.1）
 
 ## [0.1.0] - 2026-11-04
 

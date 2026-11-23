@@ -116,6 +116,14 @@ jobs:
   web:
     runs-on: ubuntu-latest
     needs: encoding
+    env:
+      # e2e 起后端用的 lite 配置：SQLite + 进程内队列，不需要 PG/Redis 服务容器。
+      # 限流必须放宽——默认 60 次/分钟，而 16 个用例每个都打 analyze，
+      # 本地实测会撞成 429 导致"评分面板不出现"的假失败（真跑过 200×51/429×24）。
+      DEAIIFY_REDIS_URL: ""
+      DEAIIFY_DATABASE_URL: sqlite+aiosqlite:///./_e2e.db
+      DEAIIFY_RATE_LIMIT_PER_MIN: "600"
+      API_PROXY_TARGET: http://127.0.0.1:8000
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -132,4 +140,45 @@ jobs:
       - run: pnpm --filter web exec tsc --noEmit
       - run: pnpm --filter web test
 
-  # e2e（Playwright，M3）后续补充；镜像构建见 .github/workflows/docker.yml
+      # ── e2e（docs §15 M3「Playwright 冒烟全过」）────────────────────────
+      # 用 chrome channel 复用 runner 预装的 google-chrome，不下载 Playwright
+      # 自带 Chromium（省 ~170MB 和一分钟）。
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.13"
+      - name: 启动 API（lite 模式）
+        working-directory: apps/api
+        run: |
+          uv sync --frozen
+          nohup uv run uvicorn deaiify.main:app --host 127.0.0.1 --port 8000 \
+            >"$RUNNER_TEMP/api.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:8000/api/v1/health >/dev/null && exit 0
+            sleep 1
+          done
+          echo "API 未在 60s 内就绪，最后 50 行日志：" && tail -50 "$RUNNER_TEMP/api.log"
+          exit 1
+      - name: 启动 Web（生产构建）
+        run: |
+          nohup pnpm --filter web start --port 3000 >"$RUNNER_TEMP/web.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:3000/ >/dev/null && exit 0
+            sleep 1
+          done
+          echo "Web 未在 60s 内就绪，最后 50 行日志：" && tail -50 "$RUNNER_TEMP/web.log"
+          exit 1
+      - name: e2e
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+          ANNOTATE_GREP: '^\s+\d+\) |Error: |expect\(|Locator: |Expected: |Received: '
+          ANNOTATE_TAIL: "80"
+        run: bash .github/scripts/annotate.sh "playwright" pnpm --filter web exec playwright test
+      # 失败时把服务日志也带出来（annotation 是唯一可读通道）
+      - name: 失败时导出服务日志
+        if: failure()
+        run: |
+          echo "::group::api.log"; tail -80 "$RUNNER_TEMP/api.log" || true; echo "::endgroup::"
+          echo "::group::web.log"; tail -80 "$RUNNER_TEMP/web.log" || true; echo "::endgroup::"
+
+  # 镜像构建见 .github/workflows/docker.yml

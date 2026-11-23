@@ -72,3 +72,9 @@ _uvcache/
 _encscan.py
 _hatch_repro.py
 _fake_llm.py
+
+# Playwright（e2e）
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/.playwright/
+apps/api/_e2e.db
