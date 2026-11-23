@@ -48,6 +48,9 @@ services:
 
   # —— 应用（profile: full）——
   api:
+    # 预构建镜像：CI 在 push main / v* tag 时推送到 GHCR（见 .github/workflows/docker.yml）。
+    # 有镜像时 `docker compose --profile full pull` + `up -d --no-build` 可跳过本地构建。
+    image: ghcr.io/huayuehua15-netizen/de-ai-ify-api:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.api
@@ -91,6 +94,7 @@ services:
       - deaiify-data:/app/data
 
   web:
+    image: ghcr.io/huayuehua15-netizen/de-ai-ify-web:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.web
