@@ -925,6 +925,7 @@ DEAIIFY_REWRITE_TIMEOUT_S=120
 
 ```yaml
 jobs:
+  encoding: # 文本文件 UTF-8 校验（见下方「编码陷阱」；其余 job 都 needs 它）
   python:   # ubuntu-latest: uv sync --frozen → ruff → pytest（单测 + corpus 回归，SQLite）
   api-int:  # services: postgres:15-alpine + redis:7-alpine → 集成测试（标准栈路径）
   web:      # pnpm i --frozen-lockfile → eslint → tsc → vitest → next build
@@ -936,6 +937,52 @@ jobs:
 - **发布**：打 `vX.Y.Z` tag → GitHub Release + `CHANGELOG.md` 条目 + GHCR 镜像 `latest`；
 - 版本策略：SemVer；`engine_version` 独立维护（规则变更才算 engine 破坏性变更）；
 - Dependabot：`npm` + `pip` 每月一次。
+
+### 14.1 编码陷阱：`.gitignore` 必须是合法 UTF-8
+
+这条写在这里是因为它造成过一次长达数小时的误判，而**所有常规排查手段都指向错误方向**。
+
+**症状**：CI 的 `python` / `api-int` 两个 job 在 `uv sync --frozen` 失败，报
+
+```
+error: Failed to build `deaiify @ file:///.../apps/api`
+  cause: The build backend returned an error
+  cause: Call to `hatchling.build.build_editable` failed (exit status: 1)
+```
+
+**为什么难查**：
+
+1. 报错只写「构建后端返回错误」，真正的 traceback 埋在 hatchling 里层；
+2. 本次改的是 `.gitignore`，`git diff` 里 `apps/api/` 一行没动，看起来像环境漂移；
+3. 本地**永远复现不出来**——venv 里已有 editable 安装，`uv sync` 会跳过构建；
+4. 钉死 uv 版本、查 lock 哈希、排查可疑依赖，全部无效，因为根因不在依赖。
+
+**真实根因**：hatchling 构建 wheel 时会读 `.gitignore` 做 VCS 排除，且严格按 UTF-8 解码
+（`hatchling/builders/config.py: load_vcs_exclusion_patterns`）。而 Windows PowerShell 的
+`Add-Content` / `Out-File` 默认按**系统 ANSI 代码页**写入——简体中文环境即 GBK。往一个
+UTF-8 文件里追加中文注释，就得到一个编码混血文件：
+
+```
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xb9 in position 883
+```
+
+**规则**：
+
+- **不要**用 `Add-Content` / `Out-File` / `>` 重定向写仓库里的文本文件。用：
+  ```powershell
+  [System.IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding($false)))
+  ```
+  （`$false` = 不写 BOM；`uv`/`ruff`/`node` 都能容忍 BOM，但没必要给自己找麻烦。）
+- CI 的 `encoding` job 会跑 `.github/scripts/check_encoding.py` 扫描所有跟踪文件，
+  非 UTF-8 时指出**文件名、行号、字节偏移**，十秒出结果，不必再猜。
+- 本地自查：`python .github/scripts/check_encoding.py`
+
+**顺带一条方法上的教训**：本仓库的 GitHub token 无 admin 权限，
+`GET /actions/jobs/{id}/logs` 恒返回 403，check-run 的 `output.summary/text` 对 shell 步骤
+也是空的。**annotation 是唯一能读到失败原因的通道**——`.github/scripts/annotate.sh` 就是
+为此存在的：它包住可能失败的命令，把日志里的 `error:` / `cause:` / `hint:` 行转成 annotation。
+任何新的 CI 步骤，只要它可能在「本地过、CI 不过」的情况下失败，就应该用它包一层。
+
 
 ---
 
