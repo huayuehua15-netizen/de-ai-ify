@@ -4,6 +4,7 @@ provider 经 httpx2.MockTransport 注入（与 test_api_rewrite.py 同一路径�
 不触网、不消耗 token。批量走后台协程，测试用轮询等待状态终态。
 """
 
+import asyncio
 import json as jsonlib
 import time
 
@@ -203,9 +204,7 @@ def test_progress_persisted_without_text(batch_client) -> None:
             async with get_session_factory()() as session:
                 return await session.get(BatchJob, job_id)
 
-        from tests.conftest import run_async
-
-        return run_async(_get())
+        return asyncio.run(_get())
 
     row = read_row()
     assert row is not None
@@ -226,8 +225,6 @@ def test_reconcile_marks_interrupted_jobs(batch_client) -> None:
     job_id = client.post("/api/v1/batch", json=_payload(1)).json()["job_id"]
     _wait_done(client, job_id)
 
-    from tests.conftest import run_async
-
     from deaiify.db.session import get_session_factory
 
     async def force_running() -> None:
@@ -237,8 +234,8 @@ def test_reconcile_marks_interrupted_jobs(batch_client) -> None:
             row.status = "running"
             await session.commit()
 
-    run_async(force_running())
-    n = run_async(batch_svc.reconcile_interrupted())
+    asyncio.run(force_running())
+    n = asyncio.run(batch_svc.reconcile_interrupted())
     assert n >= 1
 
     final = client.get(f"/api/v1/batch/{job_id}").json()
@@ -336,14 +333,12 @@ def test_batch_concurrency_respected(batch_client, monkeypatch) -> None:
     assert final["done"] == 4
     assert upstream.calls == 4
 
-    from tests.conftest import run_async
-
     from deaiify.db.session import get_session_factory
 
     async def read() -> BatchJob | None:
         async with get_session_factory()() as session:
             return await session.get(BatchJob, job_id)
 
-    row = run_async(read())
+    row = asyncio.run(read())
     assert row is not None
     assert row.done == 4
