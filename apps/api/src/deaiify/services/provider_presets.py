@@ -92,6 +92,16 @@ PRESETS: list[Preset] = [
         "note": "OpenAI 兼容模式端点",
     },
     {
+        "id": "sensenova",
+        "name": "商汤日日新 Token Plan",
+        "kind": "openai",
+        "base_url": "https://token.sensenova.cn/v1",
+        "needs_key": True,
+        "docs_url": "https://platform.sensenova.cn/console",
+        "models": ["sensenova-6.8-flash-lite", "sensenova-6.8-flash", "sensenova-u1.5-lite"],
+        "note": "OpenAI 兼容端点；网关同时路由 deepseek/kimi/glm 等模型，模型名以 /models 返回为准",
+    },
+    {
         "id": "ollama",
         "name": "Ollama 本地",
         "kind": "ollama",

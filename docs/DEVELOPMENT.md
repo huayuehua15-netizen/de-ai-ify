@@ -1086,11 +1086,22 @@ finding 时无条件高亮并 `setSelectionRange(start, end)`，把选区强行�
 
 **交付**：§7 全端点、三 provider 适配层、风格矩阵 6 种、质量闸门、SSE、错误码与限流、OpenAPI 文档。
 **验收**：
-- [ ] `curl` 走通 analyze/rewrite/stream 三端点；
+- [x] `curl` 走通 analyze/rewrite/stream 三端点；
 - [x] respx 模拟超时/429/5xx 用例全过；
 - [x] 改写后 Δscore 与专有名词召回校验生效（故意构造劣质改写能被闸门拦下）。
 
-> **实现注记（2026-10-15）**：三端点已真机 curl 验证传输层（analyze 完整响应 / rewrite 未配置→503 统一错误体 / stream SSE `start→error→done` 帧）；**首个方框待补**：等模型凭据到位后用真实改写过一遍 curl。测试口径：respx 用例打 httpx 系 Ollama 路径，openai 路径用 `httpx2.MockTransport` 注入（§16 R11），两路合计 23 用例全绿；闸门重试（流式 + 非流式）均覆盖。
+> **实现注记（2026-10-15）**：三端点已真机 curl 验证传输层（analyze 完整响应 / rewrite 未配置→503 统一错误体 / stream SSE `start→error→done` 帧）。测试口径：respx 用例打 httpx 系 Ollama 路径，openai 路径用 `httpx2.MockTransport` 注入（§16 R11），两路合计 23 用例全绿；闸门重试（流式 + 非流式）均覆盖。
+>
+> **实现注记（2026-11-23，真实模型）**：接入商汤日日新 Token Plan（`base_url=https://token.sensenova.cn/v1`，`sensenova-6.8-flash-lite`，按 OpenAI 兼容协议走 `kind=openai`）后补齐真实改写实测——
+>
+> | 端点 | 输入 | 结果 |
+> | --- | --- | --- |
+> | `POST /rewrite` | 80 分模板腔（「在当今社会……首先……其次……最后……综上所述」） | **80 → 21，Δ-59，gate pass**，attempts 1，47s（含 3670 completion tokens） |
+> | `POST /rewrite/stream` | 77 分模板腔 | SSE 帧序 `start → delta×6 → version → score → done`，**77 → 55，Δ-22，gate pass**，7.6s |
+>
+> 输出示例（stream 拼接）：「人工智能这东西，确实能派上大用场。一方面，干活的效率提上去了；另一方面，成本也压下来了。所以，它值得被认真对待。」——短句变奏、口语连接词、去掉排比与「综上所述」，符合 `natural` 风格定义。
+>
+> 顺带确认两个线上行为：① `delta` 帧的正文在 `text` 字段而非 `delta` 字段（`{"style":"natural","text":"..."}`），前端 `workspace.tsx:255` 的 `payload.text` 读取正确；② `/providers/{id}/test` 在容器内经公网可达，返回该 key 可见的 7 个模型（`deepseek-v4-flash` / `sensenova-6.8-flash-lite` / `sensenova-u1.5-lite` / `kimi-k3` / `deepseek-flash` / `sensenova-6.8-flash` / `glm-5.3`），说明网关兼容多厂商模型而非只有日日新自研。
 
 ### M3 Web 主流程（5–7 天）
 
