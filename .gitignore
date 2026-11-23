@@ -1,4 +1,4 @@
-# —— Node ——
+# ── Node ──
 node_modules/
 .next/
 out/
@@ -8,7 +8,7 @@ coverage/
 *.tsbuildinfo
 .pnpm-store/
 
-# —— Python ——
+# ── Python ──
 .venv/
 venv/
 __pycache__/
@@ -27,12 +27,12 @@ htmlcov/
 coverage.xml
 jieba.cache
 
-# —— 本地构建/诊断临时目录（沙箱环境下 uv 缓存与 ACL 诊断输出）——
+# ── 本地构建/诊断临时目录（沙箱环境下 uv 缓存与 ACL 诊断输出）──
 .uvwork/
 .acl-recovery/
 .pnpm-data/
 
-# —— 密钥与运行数据 ——
+# ── 密钥与运行数据 ──
 .env
 .env.local
 .env.*.local
@@ -43,11 +43,11 @@ data/
 *.sqlite
 *.sqlite3
 
-# —— 测试报告 ——
+# ── 测试报告 ──
 playwright-report/
 test-results/
 
-# —— 编辑器 / 系统 / 日志 ——
+# ── 编辑器 / 系统 / 日志 ──
 .DS_Store
 Thumbs.db
 .idea/
@@ -58,14 +58,16 @@ pnpm-debug.log*
 
 apps/api/.probe-dir/
 
-# ������־�������Ų��ã�
+# 构建日志（本地排查用）
 *.log.err
 _build-*
 
-# ��ʱ�ύ��Ϣ�ļ�
+# 临时提交信息文件
 _commitmsg.txt
 
 # 本地临时构建/测试目录
 _uvtest/
 _uvtmp/
-
+_uvcache/
+_encscan.py
+_hatch_repro.py

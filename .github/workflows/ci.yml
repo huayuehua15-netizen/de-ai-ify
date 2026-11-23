@@ -12,8 +12,22 @@ env:
   UV_VERSION: "0.13.5"
 
 jobs:
+  # 文本文件编码检查：一个 job 十秒钟，挡掉一类排查成本极高的故障。
+  # .gitignore 混入 GBK 字节会让 hatchling 在 uv sync 阶段崩掉，而报错只写
+  # "build backend returned an error"——真实 traceback 埋在里层，本地又因
+  # venv 已有 editable 安装而跳过构建、复现不出来。详见脚本内注释。
+  encoding:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python .github/scripts/check_encoding.py
+
   python:
     runs-on: ubuntu-latest
+    needs: encoding
     defaults:
       run:
         working-directory: apps/api
@@ -34,6 +48,7 @@ jobs:
   # 标准栈集成：health 必须报告 db/redis ok（§3.3）
   api-int:
     runs-on: ubuntu-latest
+    needs: encoding
     services:
       postgres:
         image: postgres:15-alpine
@@ -90,6 +105,7 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
+    needs: encoding
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
