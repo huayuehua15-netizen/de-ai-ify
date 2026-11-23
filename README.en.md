@@ -10,7 +10,7 @@
 > Make AI drafts read like a human wrote them.
 > An explainable AI-text scorer and rewriter: find the boilerplate, the vague filler, the repetitive structure and the uniform sentence lengths — score it with reasons, rewrite it in one click, then verify the result.
 
-**Status: M0 scaffold ✅ · M1 scoring engine ✅ · M2 API + rewrite ✅ · M3 web client ✅ · M4 lexicons/privacy/providers ✅ · M5 CLI/Docker/docs ✅** (full design in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md))
+**Status: v0.2.0 released · M0 scaffold ✅ · M1 scoring engine ✅ · M2 API + rewrite ✅ · M3 web client ✅ · M4 lexicons/privacy/providers ✅ · M5 CLI/Docker/docs ✅** (full design in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md))
 
 ---
 
@@ -37,6 +37,10 @@ worked — instead of leaving you to guess whether something "sounds like AI".
 - **Privacy by default**: scoring is fully local, **the original text is never stored by default**, and history can be wiped in one click;
 - **Multiple entry points**: web UI, REST API, CLI and self-hosted Docker, all backed by the same engine.
 
+## Screenshot
+
+![Main UI: sample score, eight dimensions and highlighted hits](docs/assets/workspace.png)
+
 ## What this is
 
 This repository is a **self-hostable application** — not a hosted service and not a desktop client. Clone it,
@@ -60,9 +64,21 @@ Out of scope for v1: multi-tenant SaaS, desktop client, browser extension, platf
 
 ### Option 1: Docker (nothing to install locally)
 
+**Use the prebuilt images (fastest, no local build)**
+
 ```bash
 git clone https://github.com/huayuehua15-netizen/de-ai-ify.git
 cd de-ai-ify
+docker compose --profile full pull
+docker compose --profile full up -d --no-build
+```
+
+> Images are published to GHCR: `ghcr.io/huayuehua15-netizen/de-ai-ify-api` / `-web`.
+> If the pull is unauthorized, make both packages public in GitHub Packages, or run `docker login ghcr.io` and retry.
+
+**Or build the images locally**
+
+```bash
 docker compose --profile full up -d --build
 ```
 

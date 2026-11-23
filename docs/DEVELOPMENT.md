@@ -1,8 +1,11 @@
 # de-ai-ify 开发文档
 
-> **版本** v0.2 · **日期** 2026-10-15（Asia/Shanghai）· **状态** 待评审
+> **文档版本** v0.4 · **最后更新** 2026-11-23（Asia/Shanghai）· **状态** M0–M5 全部实现，CI 五 job + Docker 双矩阵全绿，v0.2.0 已发布
 > **一句话**：一个可完全自托管的开源工具，用于检测并去除 AI 生成文本的"AI 味"，让 AI 辅助写作更自然、更具体、更像人写的。
-> **修订** v0.2：核实存储选型——PostgreSQL/Redis 实为本机 Docker 内**已有镜像**（v0.1 只查了 PATH/服务/端口、未启动 Docker，误判为未安装），改回用户原始设想的 PG+Redis 标准栈；SQLite 降为无 Docker 备选（§2.1、§3.3、§12）。
+> **修订**
+> - **v0.4（2026-11-23）**：按代码实现修正存储/限流/前端类型的描述——Redis 当前只参与健康检查，限流与批量队列都在进程内（§3.2、§3.3、§4.1、§7.5、§12.3、§16 R7）；`packages/api-types` 代码生成未落地，前端类型为手写（§7.1）。补 v0.2.0 发布状态。
+> - **v0.3（2026-11-23）**：把 §15 全部实现注记同步到最新——M2 接入商汤日日新 Token Plan 并补齐真实改写实测（§15 M2）；M3 e2e 扩到四个 spec 共 22 例、假上游与隐私落库检查接进 CI（§13、§14.3、§15 M3）；M4 批量真机端到端实测、措辞改为"10 段文本"（§15 M4）；M5 CI/Docker 全绿实测记录（§15 M5）。并修正若干文档与实现不一致处：e2e 用例数（22，smoke 10 例）、内置风格为 5 种（`custom` 未实现）、供应商预设 10 个（含商汤日日新）、`.pre-commit-config.yaml` 的实际内容（ruff + UTF-8 编码自检 + Conventional Commits，无 prettier）。
+> - **v0.2**：核实存储选型——PostgreSQL/Redis 实为本机 Docker 内**已有镜像**（v0.1 只查了 PATH/服务/端口、未启动 Docker，误判为未安装），改回用户原始设想的 PG+Redis 标准栈；SQLite 降为无 Docker 备选（§2.1、§3.3、§12）。
 
 ---
 
@@ -198,7 +201,7 @@ docker info        # 可选：不通则只用 lite 模式
 | jieba | 0.42.x | 中文分词（评分引擎） |
 | orjson | 3.13.x | 热路径 JSON 序列化 |
 | tenacity | 9.2.x | 模型调用重试/退避 |
-| redis | 8.1.x | 标准模式：缓存、限流与批量队列（lite 模式回退进程内实现） |
+| redis | 8.1.x | 标准栈健康检查与后续扩展预留（当前限流/批量队列仍在进程内，见 §3.3） |
 | pytest / pytest-asyncio / respx | 9.1 / 1.4 / 0.23 | 测试 |
 | ruff | 0.17.x | Lint + Format |
 
@@ -209,15 +212,15 @@ docker info        # 可选：不通则只用 lite 模式
 
 | 模式 | 存储 | 适用 | 启动方式 |
 |---|---|---|---|
-| **standard（开发默认）** | PostgreSQL 15 + Redis 7（Docker 本地镜像） | 日常开发、团队部署、完整功能 | `docker compose -p deaiify up -d db redis` |
+| **standard（开发默认）** | PostgreSQL 15 + Redis 7（Docker 本地镜像） | 日常开发、团队部署（PG 持久化） | `docker compose -p deaiify up -d db redis` |
 | **lite（备选）** | SQLite（`./data/deaiify.db`）+ 进程内队列 | 无 Docker 的零配置演示、CI 单测、单机分发 | 什么都不用起 |
 
 - 选型理由：用户原始设想即 FastAPI + PostgreSQL + Redis，且经 v0.2 实测本机 Docker 内**镜像已备齐**（`postgres:15-alpine`、`redis:7-alpine`），标准栈零拉取可用；
 - compose 镜像 **pin 到本地已有 tag**，规避 Docker Hub 连通问题（§2.3 C）；Hub 可达时可自行升级 tag；
-- 队列：标准模式用 Redis 列表，lite 模式回退进程内 asyncio 任务——同一 `TaskQueue` 接口，**业务代码不感知**；
-- SQLAlchemy 2.1 async + Alembic：两种模式共用同一套表结构与迁移（方言差异由 Alembic 处理）；
-- 限流同理：Redis 令牌桶（标准）/ 进程内令牌桶（lite）；
-- **lite 模式限制**：SQLite 不支持并发写 → 单 worker；标准模式 PG 可横向扩 worker。该限制写入部署文档。
+- 队列：**两种模式均为进程内 asyncio 任务**（批量是等 I/O，Redis 只增加部署依赖、不增加吞吐，见 §6.5）；Redis 暂不参与队列；
+- SQLAlchemy 2.1 async + 启动时 `create_all`：两种模式共用同一套表结构；Alembic 已在依赖中，出现首个破坏性结构变更时再接入迁移；
+- 限流：**两种模式均为进程内滑动窗口**（IP + key 双维度）；多 worker/多副本部署时各自独立计数，需要全局限流请在网关层实现；
+- **lite 模式限制**：SQLite 不支持并发写 → 单 worker。标准模式 PG 可多 worker；批量队列与限流仍为进程内，多副本部署需注意任务不共享。该限制写入部署文档。
 
 ### 3.4 版本锁定策略
 
@@ -262,7 +265,7 @@ graph TB
 
     subgraph 存储
         DB[(PostgreSQL 标准 / SQLite 备选)]
-        Q[Redis 队列标准 / 进程内备选]
+        Q[批量队列 · 进程内]
     end
 
     WEB --> API
@@ -379,7 +382,7 @@ score = round( Σ wᵢ × dimensionᵢ )     # 0–100，AI 味浓度
 
 **实现**（`engine/register.py` + `engine/weights_register.py`）：
 
-1. **文体识别**：8 类文体的**结构性标志**（非单个套话词）——公文看"一、二、三""各部门/压实"，
+1. **文体识别**：7 类文体的**结构性标志**（非单个套话词，外加 `unknown` 兜底）——公文看"一、二、三""各部门/压实"，
    法律看"第X条/当事人/应当"，技术看"API/QPS/接口"，产品看"使用方法/本品/请勿"，
    学术看"本文/实验/显著差异/p<"，新闻看"本报讯/记者获悉"，口语看第一人称+语气词+问句。
    命中阈值 2 个标志（口语 2 个）；优先级 legal > official > product > technical > academic > news > casual。
@@ -451,7 +454,7 @@ class Finding(BaseModel):
 
 ## 6. 改写引擎
 
-### 6.1 风格预设矩阵（v1 内置 5 种 + 1 种自定义）
+### 6.1 风格预设矩阵（v1 内置 5 种）
 
 | style id | 名称 | 目标 | 关键约束 | 状态 |
 |---|---|---|---|---|
@@ -460,7 +463,9 @@ class Finding(BaseModel):
 | `academic` | 学术克制 | 保专业去空话 | 保留术语与引用位，禁排比与空泛形容词 | ✅ M2 |
 | `business` | 商务简报 | 结论先行 | 每段首句给结论，量化表达优先 | ✅ M2 |
 | `social` | 社交媒体 | 短平快 | 句长 ≤ 20 字为主，可用钩子开头 | ✅ M2 |
-| `custom` | 自定义 | 用户模板 | DB 存 prompt 片段 | M4 |
+
+> 状态说明（2026-11-23）：`custom`（用户自定义风格模板，DB 存 prompt 片段）在规划中，
+> 当前实现只上线了上表 5 种内置风格——`/styles` 返回的就是这 5 项。
 
 多版本输出 = 对同一文本并行发起 N 个风格请求（默认 N=3，UI 可勾选），每个版本都走 §6.3 质量闸门。
 
@@ -552,7 +557,7 @@ class ModelProvider(Protocol):
 | PUT | `/lexicons/builtin/disabled` | 批量停用/恢复内置词条（幂等） | — |
 | GET | `/history` | 改写历史（never 模式 stored_text 恒 null） | — |
 | DELETE | `/history` | 一键清除历史（docs §8.2） | — |
-| GET | `/providers/presets` | 供应商预设（9 个：OpenAI/Anthropic/DeepSeek/智谱/Kimi/MiniMax/百炼/Ollama/自定义） | — |
+| GET | `/providers/presets` | 供应商预设（10 个：OpenAI/Anthropic/DeepSeek/智谱/Kimi/MiniMax/百炼/商汤日日新 Token Plan/Ollama/自定义） | — |
 | GET/POST | `/providers` | 已配置供应商 / 添加（key 加密存储，响应只给掩码） | — |
 | GET/PATCH/DELETE | `/providers/{id}` | 单个读写（PATCH 传空 key = 清除） | — |
 | POST | `/providers/{id}/default` | 设为默认（全局唯一） | — |
@@ -567,7 +572,7 @@ class ModelProvider(Protocol):
 > analyze/rewrite 对 DB 故障优雅降级：词库读不到就用内置词库，历史写不进也不影响响应，
 > **评分/改写永不因存储 500**。
 
-OpenAPI 自动生成：`http://<host>/docs`（Swagger）与 `/redoc`；前端类型经 `openapi-typescript` 生成 `packages/api-types`，**前后端契约零手写漂移**。
+OpenAPI 自动生成：`http://<host>/docs`（Swagger）与 `/redoc`；前端请求/响应类型**手写在 `apps/web/lib/types.ts`**，契约由 API 测试与 Playwright e2e 保证（`openapi-typescript` 生成 `packages/api-types` 列为后续项，尚未落地）。
 
 ### 7.2 请求/响应示例
 
@@ -623,7 +628,7 @@ event: done     data: {"versions":2,"elapsed_ms":8421}
 
 - **默认**：自托管单用户、`API_KEY` 未设置 → 不鉴权（方便本地/内网）；
 - 设置 `DEAIIFY_API_KEY` 后：所有 `/api/*`（除 `/health`）要求 `Authorization: Bearer <key>`；
-- 限流：Redis 令牌桶为标准实现（Docker 实例）；lite 模式回退进程内令牌桶，按 IP + key 双维度；
+- 限流：当前为**进程内滑动窗口**，按 IP + key 双维度，默认 60 req/min；多实例部署时各自计数，需要全局限流请放在反向代理/网关层；
 - 不做用户系统、不做多租户（§17）。
 
 ---
@@ -874,16 +879,20 @@ DEAIIFY_HOST=127.0.0.1
 DEAIIFY_PORT=8000
 # —— 标准栈（Docker，端口见 §2.3 D；开发默认）——
 DEAIIFY_DATABASE_URL=postgresql+asyncpg://deaiify:deaiify@127.0.0.1:5433/deaiify
-DEAIIFY_REDIS_URL=redis://127.0.0.1:6380/0
+DEAIIFY_REDIS_URL=redis://127.0.0.1:6380/0   # 标准栈健康检查；当前不承载限流/队列
 # —— lite 备选（无 Docker，见 §12.1 零配置路径）——
 # DEAIIFY_DATABASE_URL=sqlite+aiosqlite:///./data/deaiify.db
-# DEAIIFY_REDIS_URL=                 # 空 = 进程内队列
+# DEAIIFY_REDIS_URL=                 # 空 = 不检查 Redis
 DEAIIFY_API_KEY=                   # 空 = 不鉴权
 DEAIIFY_RATE_LIMIT_PER_MIN=60
 
 # —— 隐私 ——
 DEAIIFY_STORE=never                # never | optin（默认 never）
 DEAIIFY_HISTORY_TTL_DAYS=          # optin 时可选
+
+# —— 密钥加密主密钥（见 §14.2）——
+DEAIIFY_SECRET_KEY=                 # 留空则落盘到下面的文件；多副本/迁移必须显式设
+DEAIIFY_SECRET_FILE=                # 主密钥落点；容器默认 /app/data/.deaiify-secret
 
 # —— 模型（三类至少配一个）——
 DEAIIFY_OPENAI_API_KEY=
@@ -1077,7 +1086,7 @@ finding 时无条件高亮并 `setSelectionRange(start, end)`，把选区强行�
 ### M0 脚手架（1–2 天）
 
 **交付**：monorepo 结构、uv+pnpm 锁定、`scripts/check-env.mjs`、`.env.example`、`.gitignore`、ruff/eslint/tsc 基线、CI 骨架、`/health` 与空首页可访问。
-**验收**：新机器按 README 三条命令起服务；CI 三 job 全绿。
+**验收**：新机器按 README 三条命令起服务；CI 全绿（现为 encoding / python / api-int / uv-latest-probe / web 五 job，见 §14）。
 
 ### M1 评分引擎（3–5 天）★ 最高优先级
 
@@ -1090,7 +1099,7 @@ finding 时无条件高亮并 `setSelectionRange(start, end)`，把选区强行�
 
 ### M2 API + 改写（3–4 天）
 
-**交付**：§7 全端点、三 provider 适配层、风格矩阵 6 种、质量闸门、SSE、错误码与限流、OpenAPI 文档。
+**交付**：§7 全端点、三 provider 适配层、风格矩阵 5 种（内置，见 §6.1）、质量闸门、SSE、错误码与限流、OpenAPI 文档。
 **验收**：
 - [x] `curl` 走通 analyze/rewrite/stream 三端点；
 - [x] respx 模拟超时/429/5xx 用例全过；
@@ -1120,8 +1129,9 @@ finding 时无条件高亮并 `setSelectionRange(start, end)`，把选区强行�
 
 > **实现注记（2026-11-23）**：`apps/web/e2e/` 四个 spec 共 22 例，接进 CI 的 `web` job。
 >
-> - `smoke.spec.ts`（11 例）：首屏元素齐全 / 粘贴后出总分与八维与命中列表 / 示例文本一键填入 /
->   命中卡片与原文高亮联动 / 清空复位 / 全选删除能清空全文 / 五个页面可达（4 例）。
+> - `smoke.spec.ts`（10 例）：首屏元素齐全 / 粘贴后出总分与八维与命中列表 / 示例文本一键填入 /
+>   命中卡片与原文高亮联动 / 清空复位 / 全选删除能清空全文（6 例）、四个页面可达（4 例，
+>   `/settings` `/lexicon` `/history` `/batch`）。
 > - `editor.spec.ts`（6 例）：overlay 六项排版对齐（字号/行高/字距/内边距/字体/换行）、
 >   内容区宽度与滚动条补偿、长文本滚动同步、文字透明度与可见性、
 >   万字输入 p95 < 50ms、超长文本明确提示。
@@ -1201,7 +1211,7 @@ finding 时无条件高亮并 `setSelectionRange(start, end)`，把选区强行�
 | R4 | 开源用户用本地模型（CPU）改写慢（30–120s） | 中 | 中 | 默认推荐云端 OpenAI 兼容端点；UI 显示"本地模型预计耗时"；批量并发降到 1–2（**本项目开发环境不受影响**：开发默认走维护者提供的云端端点，不用本地 Ollama） |
 | R5 | GitHub/Docker Hub 连通不稳 | 中 | 低 | 操作可重试；db/redis 镜像本机已备齐（compose pin 本地 tag），api/web 走本地构建，mirror/save-load 作兜底 |
 | R6 | 改写丢失事实/数字 | 中 | **高** | §6.3 数字与专名 100% 召回硬闸门，失败自动重试 |
-| R7 | lite 模式（SQLite）并发写限制 | 低 | 中 | lite 单 worker 明示；标准栈用 PG，可横向扩 worker |
+| R7 | lite 模式（SQLite）并发写限制 | 低 | 中 | lite 单 worker 明示；标准栈用 PG 可多 worker，但批量队列与限流仍在进程内，多副本需网关限流、任务按实例独立 |
 | R8 | 词库版权/语料许可争议 | 低 | 高 | 内置词库自撰 + 社区 PR 需声明来源；corpus 只收可再许可文本 |
 | R9 | 服务商 SDK 大版本破坏（openai 3.x、anthropic 1.x） | 中 | 中 | 适配层隔离 SDK；契约测试锁行为 |
 | R10 | 匿名滥用（若未来公开 demo） | 低 | 中 | v1 不提供公共 demo；限流默认 60/min |
@@ -1218,7 +1228,7 @@ finding 时无条件高亮并 `setSelectionRange(start, end)`，把选区强行�
 - `CONTRIBUTING.md`：环境准备（§2.4）、分支约定（trunk-based，`feat/*`、`fix/*`）、PR 模板（动机/改动/验证截图）、commit 规范（Conventional Commits）；
 - `SECURITY.md`：漏洞私下报告渠道（GitHub Private Vulnerability Reporting）；
 - Issue 模板：`bug`（含环境自检输出）、`feature`、`rule`（词库/规则提议，自带样例文本）；
-- `.editorconfig`、`.gitignore`（§2.3 A）、`.pre-commit-config.yaml`（ruff + prettier）；
+- `.editorconfig`、`.gitignore`（§2.3 A）、`.pre-commit-config.yaml`（ruff + UTF-8 编码自检 + Conventional Commits 校验）；
 - `CODE_OF_CONDUCT.md`（Contributor Covenant 2.1）。
 
 ### 17.2 隐私声明（README 必含段落）

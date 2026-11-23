@@ -10,7 +10,7 @@
 > 把 AI 草稿，改成人写的。
 > 可解释的 AI 文本评分与改写工具：检测并去除套话、空泛表达、结构重复与均匀句长——先评分解释，再一键改写，改完再验证。
 
-**状态：M0 脚手架 ✅ · M1 评分引擎 ✅ · M2 API + 改写 ✅ · M3 Web 主流程 ✅ · M4 词库/隐私/供应商 ✅ · M5 CLI/Docker/文档 ✅**（完整设计见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)）
+**状态：v0.2.0 已发布 · M0 脚手架 ✅ · M1 评分引擎 ✅ · M2 API + 改写 ✅ · M3 Web 主流程 ✅ · M4 词库/隐私/供应商 ✅ · M5 CLI/Docker/文档 ✅**（完整设计见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)）
 
 ---
 
@@ -34,6 +34,10 @@
 - **隐私模式**：评分纯本地完成，**默认不保存原文**，可一键清除；
 - **多入口**：Web、REST API、CLI、Docker 自托管，同一引擎行为一致。
 
+## 界面预览
+
+![主界面：示例文本评分、八维解释与命中位置](docs/assets/workspace.png)
+
 ## 产品形态
 
 本项目开源的是**可自托管的完整应用**（不是我们运营的在线服务，也不是桌面客户端）。拿到仓库后在自己的机器/服务器上运行，得到一个网页应用：
@@ -54,9 +58,21 @@ v1 不做：多租户 SaaS、桌面客户端、浏览器插件、平台 Skill（
 
 ### 方式一：Docker（推荐，无需本地装 Python/Node）
 
+**用预构建镜像（最快，首次不用等本地构建）**
+
 ```bash
 git clone https://github.com/huayuehua15-netizen/de-ai-ify.git
 cd de-ai-ify
+docker compose --profile full pull
+docker compose --profile full up -d --no-build
+```
+
+> 镜像发布在 GHCR：`ghcr.io/huayuehua15-netizen/de-ai-ify-api` / `-web`。
+> 若提示无权限拉取，先在 GitHub Packages 将两个包设为 public，或 `docker login ghcr.io` 后重试。
+
+**或本地构建镜像**
+
+```bash
 docker compose --profile full up -d --build
 ```
 
