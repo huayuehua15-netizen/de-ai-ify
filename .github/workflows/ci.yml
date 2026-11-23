@@ -43,7 +43,13 @@ jobs:
       - run: bash ../../.github/scripts/annotate.sh "uv sync --frozen" uv sync --frozen
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
-      - run: uv run pytest
+      # pytest 也要包一层：它对失败只打印 traceback，step 级只剩 "exit code 1"。
+      # ANNOTATE_GREP 换成 pytest 的失败摘要形状（FAILED / E   / short test summary）。
+      - name: pytest
+        env:
+          ANNOTATE_GREP: '^(FAILED|ERROR) |^E   |^_{5,} .* _{5,}$|^=+ (FAILURES|ERRORS|short test summary)'
+          ANNOTATE_TAIL: "60"
+        run: bash ../../.github/scripts/annotate.sh "pytest" uv run pytest -q
 
   # 标准栈集成：health 必须报告 db/redis ok（§3.3）
   api-int:
@@ -81,7 +87,11 @@ jobs:
       - name: toolchain
         run: uv --version && python -V
       - run: bash ../../.github/scripts/annotate.sh "uv sync --frozen" uv sync --frozen
-      - run: uv run pytest
+      - name: pytest (标准栈)
+        env:
+          ANNOTATE_GREP: '^(FAILED|ERROR) |^E   |^_{5,} .* _{5,}$|^=+ (FAILURES|ERRORS|short test summary)'
+          ANNOTATE_TAIL: "60"
+        run: bash ../../.github/scripts/annotate.sh "pytest" uv run pytest -q
 
   # 环境漂移探针：用最新 uv 跑一次 uv sync --frozen。
   # 成功 → 提示可以升级 UV_VERSION；失败 → annotation 里带真实报错，且因为
