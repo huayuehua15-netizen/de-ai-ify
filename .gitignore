@@ -71,3 +71,4 @@ _uvtmp/
 _uvcache/
 _encscan.py
 _hatch_repro.py
+_fake_llm.py

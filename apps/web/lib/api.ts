@@ -6,6 +6,7 @@
 import type {
   AnalysisResult,
   ApiErrorBody,
+  BatchJobOut,
   BuiltinInfo,
   ClearResult,
   ConnectivityResult,
@@ -230,4 +231,22 @@ export function fetchHistory(limit = 50): Promise<HistoryItem[]> {
 
 export function clearHistory(): Promise<ClearResult> {
   return request<ClearResult>("/api/v1/history", { method: "DELETE" });
+}
+
+/* —— 批量任务（M4，docs §6.5）—— */
+
+export function createBatch(body: {
+  items: Array<{ text: string; title?: string | null }>;
+  styles: string[];
+  model: { provider?: string | null; name?: string | null; provider_config_id?: string | null };
+  gate?: boolean;
+}): Promise<BatchJobOut> {
+  return request<BatchJobOut>("/api/v1/batch", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function fetchBatchJob(jobId: string, signal?: AbortSignal): Promise<BatchJobOut> {
+  return request<BatchJobOut>(`/api/v1/batch/${jobId}`, { cache: "no-store", signal });
 }

@@ -5,7 +5,7 @@
 """
 
 import uuid
-from typing import Any
+from typing import Any, NamedTuple
 
 import httpx
 from sqlalchemy import select, update
@@ -133,8 +133,8 @@ async def set_default(session: AsyncSession, cfg_id: str) -> dict[str, Any]:
 
 async def resolve_for_engine(
     session: AsyncSession, cfg_id: str | None
-) -> tuple[str, str, str | None] | None:
-    """解析为引擎可用三元组 (kind, api_key, base_url)；无 DB 配置时返回 None。
+) -> "ResolvedProvider | None":
+    """解析为引擎可用配置；无 DB 配置时返回 None。
 
     引擎侧（registry）优先用这个；返回 None 表示回落到 .env 配置。
     """
@@ -142,7 +142,7 @@ async def resolve_for_engine(
         cfg = await session.get(ProviderConfig, cfg_id)
         if cfg is None or not cfg.enabled:
             raise ApiError("not_found", f"供应商配置 {cfg_id} 不存在或已停用", 404)
-        return cfg.kind, crypto.decrypt(cfg.api_key_enc or ""), cfg.base_url
+        return _resolved(cfg)
     # 未指定：取默认配置
     cfg = await session.scalars(
         select(ProviderConfig)
@@ -152,7 +152,83 @@ async def resolve_for_engine(
     first = cfg.first()
     if first is None:
         return None
-    return first.kind, crypto.decrypt(first.api_key_enc or ""), first.base_url
+    return _resolved(first)
+
+
+class ResolvedProvider(NamedTuple):
+    """DB 供应商配置解析结果（含该配置自己的默认模型名）。"""
+
+    kind: str
+    api_key: str
+    base_url: str | None
+    default_model: str | None
+    name: str
+
+
+def _resolved(cfg: ProviderConfig) -> ResolvedProvider:
+    return ResolvedProvider(
+        kind=cfg.kind,
+        api_key=crypto.decrypt(cfg.api_key_enc or ""),
+        base_url=cfg.base_url,
+        default_model=cfg.default_model,
+        name=cfg.name,
+    )
+
+
+async def resolve_model(
+    session: AsyncSession | None,
+    *,
+    provider_config_id: str | None,
+    provider: str | None,
+    name: str | None,
+    settings: Any,
+) -> tuple[Any, str]:
+    """解析 (provider 实例, 模型名)；rewrite 与 batch 共用同一条优先级链。
+
+    优先级（docs §6.4 扩展）：请求指定的 DB 配置 > DB 默认配置 > .env。
+    DB 不可用时静默回落 .env——存储故障不该让改写整体不可用。
+
+    模型名的优先级：请求 `model.name` > 该供应商配置的 `default_model` >
+    `DEAIIFY_DEFAULT_MODEL`。第二级不可省——用户在「模型设置」里填了默认模型，
+    却没在每次请求里手动指定时，否则会报"未指定模型"（真机实测踩过）。
+
+    注意 provider 的构造在 asyncio.to_thread 里做：三个 SDK 首次 import 各需
+    秒级（anthropic ~9s），直接在事件循环里构造会卡住整个 worker（见 §13 R8）。
+    """
+    import asyncio
+
+    from deaiify.providers import registry
+    from deaiify.providers.registry import get_provider
+
+    if session is not None:
+        try:
+            resolved = await resolve_for_engine(session, provider_config_id)
+        except ApiError:
+            raise
+        except Exception:  # noqa: BLE001 - DB 故障回落 .env，不阻塞改写
+            resolved = None
+        if resolved is not None:
+            built = await asyncio.to_thread(
+                registry.build_from_config, resolved.kind, resolved.api_key, resolved.base_url
+            )
+            model = name or resolved.default_model or settings.default_model
+            if not model:
+                raise ApiError(
+                    "model_unavailable",
+                    f"未指定模型：供应商「{resolved.name}」没有默认模型，"
+                    "请在请求 model.name 或模型设置里补上",
+                )
+            return built, model
+
+    # 回落到 .env 配置（传统路径）
+    prov = await asyncio.to_thread(get_provider, provider)
+    model = name or settings.default_model
+    if not model:
+        raise ApiError(
+            "model_unavailable",
+            "未指定模型：在请求 model.name 或环境变量 DEAIIFY_DEFAULT_MODEL 中设置",
+        )
+    return prov, model
 
 
 async def test_connection(

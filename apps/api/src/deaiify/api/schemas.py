@@ -74,3 +74,56 @@ class StyleOut(BaseModel):
     id: str
     name: str
     description: str
+
+
+# —— 批量任务（docs §6.5、§7.1）——
+
+
+class BatchItemIn(BaseModel):
+    """一条待改写文本；title 只用于前端展示，不参与改写。"""
+
+    text: str = Field(
+        min_length=1, description="待改写文本（单条仍受 DEAIIFY_MAX_TEXT_CHARS 限制）"
+    )
+    title: str | None = Field(default=None, max_length=120, description="展示名，如文件名")
+
+
+class BatchRequest(BaseModel):
+    items: list[BatchItemIn] = Field(
+        min_length=1,
+        max_length=50,
+        description="批量条目上限 50（docs §6.5）；并发由 DEAIIFY_BATCH_CONCURRENCY 控制",
+    )
+    styles: list[str] = Field(default_factory=lambda: ["natural"], min_length=1, max_length=1)
+    model: ModelChoice = Field(default_factory=ModelChoice)
+    gate: bool = Field(default=True, description="质量闸门（docs §6.3）")
+
+
+class BatchItemOut(BaseModel):
+    index: int
+    title: str | None = None
+    status: Literal["pending", "running", "ok", "failed"]
+    text: str | None = Field(default=None, description="改写结果；仅成功且正文仍在进程内时返回")
+    score_before: int | None = None
+    score_after: int | None = None
+    delta: int | None = None
+    gate: Literal["pass", "weak", "fail", "off"] | None = None
+    gate_reason: str | None = None
+    attempts: int = 0
+    error: str | None = None
+
+
+class BatchJobOut(BaseModel):
+    job_id: str
+    status: Literal["queued", "running", "done", "failed"]
+    total: int
+    done: int = Field(description="成功条数")
+    failed: int
+    pending: int = Field(description="尚未出结果（排队 + 运行中）")
+    progress: float = Field(description="完成比例 0–1，按已出结果的条数算")
+    style: str
+    model: str
+    error: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    items: list[BatchItemOut] = []

@@ -55,10 +55,26 @@ async def _init_schema() -> None:
         print(f"[deaiify] schema init skipped: {type(exc).__name__}: {exc}")
 
 
+async def _reconcile_batch() -> None:
+    """把上次进程遗留的 queued/running 批量任务标成 failed（docs §6.5）。
+
+    不做这一步，中断的任务会永远显示「运行中」，前端无限轮询。
+    """
+    try:
+        from deaiify.services import batch as batch_svc
+
+        n = await batch_svc.reconcile_interrupted()
+        if n:
+            print(f"[deaiify] 清理中断的批量任务 {n} 个（进程重启，结果不保留）")
+    except Exception as exc:  # noqa: BLE001 - 清理失败不阻塞启动
+        print(f"[deaiify] batch reconcile skipped: {type(exc).__name__}: {exc}")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # health 惰性探测不阻塞启动；建表失败仅告警
     await _init_schema()
+    await _reconcile_batch()
     warm = asyncio.create_task(asyncio.to_thread(_warm_providers))
     yield
     warm.cancel()

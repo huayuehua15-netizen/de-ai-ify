@@ -66,8 +66,14 @@ WORKDIR /app
 COPY --from=builder --chown=deaiify:deaiify /app/.venv /app/.venv
 COPY --chown=deaiify:deaiify apps/api/src ./src
 
-# lite 模式的 SQLite 落盘目录（挂 volume 可持久化）
+# lite 模式的 SQLite 落盘目录，同时也是主密钥（.deaiify-secret）的落点
+# —— 容器里 /app 归 root 且不可写，若不显式指向 /app/data，主密钥会
+# 悄悄落到进程内存，重建容器后用户已保存的 API Key 全部解不开（docs §14.2）
 RUN mkdir -p /app/data && chown deaiify:deaiify /app/data
+
+# 显式指定，不依赖"向上找 pyproject.toml"的启发式：
+# 镜像里 /app 下没有 pyproject.toml（只有 src/），兜底会落到 cwd，语义脆弱
+ENV DEAIIFY_SECRET_FILE=/app/data/.deaiify-secret
 
 USER deaiify
 

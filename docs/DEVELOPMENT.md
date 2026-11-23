@@ -516,11 +516,19 @@ class ModelProvider(Protocol):
 
 **批量**
 
-- 范围：多文件（CLI）/ 多段文本（API 数组）；
-- 并发：默认 3，`BATCH_CONCURRENCY` 可调；
-- 状态机：`queued → running → done | failed`，进度持久化在 `jobs` 表，页面刷新可恢复；
-- 标准模式队列在 Redis；无 Docker（lite/SQLite）模式回退进程内 asyncio 任务（同一 `TaskQueue` 接口，业务代码不感知）；
-- 单条失败不阻塞整批，结果逐条落盘（输出目录/下载 zip）。
+- 范围：多文件（CLI）/ 多段文本（API 数组，单次 ≤50 条）；
+- 并发：默认 3，`DEAIIFY_BATCH_CONCURRENCY` 可调（`Semaphore` 限流，模型侧并发不超）；
+- 状态机：`queued → running → done | failed`，**逐条出结果就落库**（不是末尾一次性写），
+  页面刷新/换标签页都能看到真实进度；
+- 队列：进程内 `asyncio.Task`（lite 与标准栈同一实现——批量是 CPU 无关的等 I/O，
+  走 Redis 只增加部署依赖不增加吞吐；Redis 留给限流/缓存）；
+- 单条失败不阻塞整批：某条报错只标记该条 `failed`，整批仍按「有成功就 done」收尾；
+- **正文不进数据库**：`batch_jobs.payload_json` 只存每条 `title/len/sha256 前 16 位`，
+  `results_json` 只存 `status/分数/gate/错误摘要`；改好的正文留在进程内存（`_RESULTS`），
+  这是 §8.2「never 默认不保存原文」的直接推论。代价：**进程重启后正文拿不回来**，
+  进度与分数仍在（前端明确提示这一点）。
+- 进程重启：启动时 `reconcile_interrupted()` 把遗留 `queued/running` 标为 `failed`，
+  不会出现永远转圈的任务。
 
 ---
 
@@ -554,10 +562,10 @@ class ModelProvider(Protocol):
 | GET | `/styles` | 风格预设列表 | — |
 | GET | `/health` | 存活 + 各 provider 可达性 + 引擎版本 | — |
 
-> **实现注记（M4）**：`/lexicons/*`、`/history` 已实现（SQLite/PG 同一套 metadata，
-> 启动幂等 `create_all`——出现首个破坏性结构变更时再引入 Alembic）；
-> `/batch` 批量任务仍待 M4 后续。analyze/rewrite 对 DB 故障优雅降级：
-> 词库读不到就用内置词库，历史写不进也不影响响应，**评分/改写永不因存储 500**。
+> **实现注记（M4）**：`/lexicons/*`、`/history`、`/batch` 均已实现（SQLite/PG 同一套 metadata，
+> 启动幂等 `create_all`——出现首个破坏性结构变更时再引入 Alembic）。
+> analyze/rewrite 对 DB 故障优雅降级：词库读不到就用内置词库，历史写不进也不影响响应，
+> **评分/改写永不因存储 500**。
 
 OpenAPI 自动生成：`http://<host>/docs`（Swagger）与 `/redoc`；前端类型经 `openapi-typescript` 生成 `packages/api-types`，**前后端契约零手写漂移**。
 
@@ -644,9 +652,12 @@ rewrite_history(id TEXT PK, text_hash TEXT, text_len INT, lang TEXT,
                 stored_text TEXT NULL, created_at, expires_at NULL)
 -- 索引 text_hash（去重统计用，不存原文）
 
--- 批量任务
-jobs(id TEXT PK, status TEXT, total INT, done INT, failed INT,
-     payload_json TEXT, results_json TEXT, created_at, updated_at)
+-- 批量任务（实现名：batch_jobs；正文不落库，见 §6.5）
+batch_jobs(id TEXT PK, status TEXT, total INT, done INT, failed INT,
+           style TEXT, model TEXT, error TEXT NULL,
+           payload_json TEXT,   -- [{index,title,len,sha256前16}]，无正文
+           results_json TEXT,   -- [{index,status,分数,gate,error}]，无正文
+           created_at, updated_at)
 
 -- 运行设置（隐私开关、默认模型等；key 类配置只存 env 不入库）
 settings(key TEXT PK, value_json TEXT, updated_at)
@@ -983,6 +994,44 @@ UnicodeDecodeError: 'utf-8' codec can't decode byte 0xb9 in position 883
 为此存在的：它包住可能失败的命令，把日志里的 `error:` / `cause:` / `hint:` 行转成 annotation。
 任何新的 CI 步骤，只要它可能在「本地过、CI 不过」的情况下失败，就应该用它包一层。
 
+### 14.2 主密钥落点：不可写时的静默失效
+
+**症状**：Docker 全栈部署里，在 `/settings` 保存供应商 API Key 后立刻显示
+`has_key: false`，测连通性报
+
+```
+LocalProtocolError: Illegal header value b'Bearer '
+```
+
+——HTTP 头里的 key 是空串。
+
+**真实根因**（两层，缺一不可）：镜像里 `useradd --uid 10001 deaiify` 后以非 root 运行，
+而 `/app` 归 `root` 且不可写；`secrets._master_secret()` 在写到主路径失败时
+`except OSError: return secret` —— **每次调用都新生成一个随机密钥**。
+于是「保存 key 的那次请求」用密钥 A 加密，「读取 key 的那次请求」用密钥 B 解密，
+同一进程内都解不开，更不用说重启之后。
+
+**修复**（`apps/api/src/deaiify/services/secrets.py`）：
+
+1. **进程内缓存** `_cached_secret`：无论落盘成功与否，同一进程内必须是同一个密钥。
+这一条比落盘本身更重要——没有它，连「加密后立刻解密」都会失败。
+2. **多级落点**：`DEAIIFY_SECRET_KEY` 环境变量 → 主路径 → `_fallback_files()`
+   （`./data`、家目录、临时目录）。容器里 `./data` 就是 `deaiify-data` 卷。
+3. **落盘写成十六进制**（64 字符）而非 32 字节二进制：二进制密钥末尾恰好是 `0x0a`/`0x20`
+   时会被 `.strip()` 吃掉，导致读回不一致（实测在测试里踩到）。读侧同时兼容旧二进制格式。
+4. **不可持久化时打一次告警到 stderr**，绝不静默降级。
+5. `docker/Dockerfile.api` 显式 `ENV DEAIIFY_SECRET_FILE=/app/data/.deaiify-secret`，
+   不依赖「向上找 pyproject.toml」的启发式（镜像里 `/app` 下并没有 pyproject.toml）。
+
+**验证**：`restart` / 重建镜像后 `has_key` 仍为 true、`/providers/{id}/test` 返回
+`{"ok": true, "models": ["fake-gpt"]}`。回归用例在 `apps/api/tests/test_api_providers.py`
+（`test_master_secret_*` 四例）。
+
+**顺带一条**：同一轮真机测试还暴露了 `resolve_model` 的一个缺陷——解析到 DB 供应商后
+没有使用该配置自己的 `default_model`，只认请求里的 `model.name` 或 `.env`，
+于是"在设置页填了默认模型"却报「未指定模型」。已改为
+`请求 name > 该供应商 default_model > DEAIIFY_DEFAULT_MODEL`。
+
 
 ---
 
@@ -1025,18 +1074,25 @@ UnicodeDecodeError: 'utf-8' codec can't decode byte 0xb9 in position 883
 
 ### M4 词库 / 隐私 / 批量（3–4 天）
 
-**交付**：词库 CRUD + 导入导出 + 内置条目停用、隐私开关与一键清除、批量任务（进度/恢复/部分失败）、`/history` 页。
+**交付**：词库 CRUD + 导入导出 + 内置条目停用、隐私开关与一键清除、批量任务（进度/恢复/部分失败）、`/lexicon` 与 `/history` 页、`/batch` 页。
 **验收**：
 - [x] 默认配置下全流程跑完，DB 中 `stored_text` 全为 NULL、无原文行；
 - [x] 关掉隐私开关 → 历史可见 → 一键清除 → DB 抽查无原文；
-- [ ] 批量 10 文件、其中 2 个故意失败 → 8 成功 2 失败、刷新进度不丢。
+- [x] 批量 10 文件、其中 2 个故意失败 → 8 成功 2 失败、刷新进度不丢。
 
-> **实现注记（2026-11-04）**：前两条方框由 `tests/test_privacy_history.py`
-> 与 `tests/test_api_lexicons.py` 覆盖（临时 SQLite 夹具，66 用例全绿）：
-> 词库 CRUD/导入导出/内置停用/自定义词条参与评分已实现；历史落库在
-> rewrite 双端点接入（never 模式 stored_text 恒 NULL 且响应二次脱敏，
-> optin + 请求勾选才落原文，TTL 经 `DEAIIFY_HISTORY_TTL_DAYS`）。
-> **剩余**：批量任务 `/batch`（含进度持久化）、Web 端 `/lexicon`、`/history` 页。
+> **实现注记（2026-11-23 更新）**：全部完成。
+> - 词库 CRUD/导入导出/内置停用/自定义词条参与评分：`tests/test_api_lexicons.py`（10 例）
+> - 隐私与历史：`tests/test_privacy_history.py`（5 例）+ rewrite 双端点接入
+> - 批量：`tests/test_api_batch.py`（14 例）覆盖建任务/全成功/部分失败/全失败/
+>   进度落库且正文不入库/重启标记中断/404/超限校验/无 provider 整批失败/
+>   刷新前后一致/并发上限
+> - Web 端：`/lexicon`、`/history`、`/batch` 三页 + 主编辑器入口
+> - `apps/web/lib/batch-split.test.ts`（8 例）覆盖多段文本切分（`---` / 空行 / 标题规则 / CRLF）
+>
+> **真机端到端实测（2026-11-23，Docker 全栈 + 假上游）**：3 条文本、中间 1 条注入
+> 上游 500 → 结果 2 成功 1 失败，成功条目 54→13 分（Δ-41，gate pass），
+> 失败条目 `provider_error: 上游模型返回 500`；`docker compose restart api` 后
+> 进度与分数仍在、正文按设计丢失。
 
 ### M5 CLI + Docker + 文档发布（3–4 天）
 

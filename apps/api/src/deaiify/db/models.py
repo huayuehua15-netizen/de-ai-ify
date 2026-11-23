@@ -1,8 +1,10 @@
 """ORM 模型（表结构见 docs/DEVELOPMENT.md §8.1）。
 
-仅含 M4 两组表：自定义词库（lexicons/lexicon_terms/disabled_terms）
-与改写历史（rewrite_history，默认 stored_text 为 NULL —— 隐私承诺 §8.2）。
-批量任务 jobs、presets、settings 属 M4 后续/CLI 场景，待需要时再加。
+四组表：自定义词库（lexicons/lexicon_terms/disabled_terms）、
+改写历史（rewrite_history，默认 stored_text 为 NULL —— 隐私承诺 §8.2）、
+供应商配置（provider_configs）、批量任务（batch_jobs，只存进度与摘要）。
+
+presets、settings、api_keys 尚未使用，待需要时再加。
 """
 
 from datetime import UTC, datetime
@@ -114,3 +116,35 @@ class RewriteHistory(Base):
     stored_text: Mapped[str | None] = mapped_column(Text, nullable=True)  # 仅 optin 且 store=true
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BatchJob(Base):
+    """批量任务（docs §6.5、§8.1 jobs 表）。
+
+    设计取舍——**不存原文、不存改写结果**：
+    - payload_json 只留每条的大小/哈希等元信息，results_json 只留
+      状态 + 分数 + 错误摘要，正文一律不落库；
+    - 结果通过 GET /batch/{id} 返回给创建它的浏览器，进程内缓存持有正文
+      （`services.batch._RESULTS`，仅存活于本次进程，重启即丢）。
+
+    这样「进度可恢复（刷新页面不丢）」成立，而隐私承诺（§8.2 never 模式
+    不落原文）也不破。代价是进程重启后正文拿不回来——对本地单机工具是
+    可接受的，且比悄悄把用户全文写进数据库安全得多。
+    """
+
+    __tablename__ = "batch_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), default="queued", nullable=False)
+    total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    done: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # 成功条数
+    failed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    style: Mapped[str] = mapped_column(String(32), default="natural", nullable=False)
+    model: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    results_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)  # 整批级失败原因
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )

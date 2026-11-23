@@ -182,6 +182,45 @@ export interface ClearResult {
   store_mode: string;
 }
 
+/* —— 批量任务（M4，docs §6.5）—— */
+
+export type BatchItemStatus = "pending" | "running" | "ok" | "failed";
+export type BatchJobStatus = "queued" | "running" | "done" | "failed";
+
+export interface BatchItemOut {
+  index: number;
+  title: string | null;
+  status: BatchItemStatus;
+  /** 改写结果；仅成功且正文仍在服务进程内时非空（重启后只留摘要） */
+  text: string | null;
+  score_before: number | null;
+  score_after: number | null;
+  delta: number | null;
+  gate: GateStatus | null;
+  gate_reason: string | null;
+  attempts: number;
+  error: string | null;
+}
+
+export interface BatchJobOut {
+  job_id: string;
+  status: BatchJobStatus;
+  total: number;
+  /** 成功条数 */
+  done: number;
+  failed: number;
+  /** 尚未出结果（排队 + 运行中） */
+  pending: number;
+  /** 0–1，按已出结果的条数算 */
+  progress: number;
+  style: string;
+  model: string;
+  error: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  items: BatchItemOut[];
+}
+
 /* —— SSE 事件载荷（docs §7.3）—— */
 
 export interface SseStart {

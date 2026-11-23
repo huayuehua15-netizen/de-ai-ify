@@ -14,10 +14,9 @@ from deaiify.api.schemas import RewriteRequest, RewriteResponse, RewriteVersionO
 from deaiify.config import get_settings
 from deaiify.db.session import get_session
 from deaiify.engine import analyze
-from deaiify.providers import registry
 from deaiify.providers.base import ProviderError
-from deaiify.providers.registry import get_provider
 from deaiify.services import history as history_svc
+from deaiify.services.providers import resolve_model
 from deaiify.services.rewrite import rewrite_one, stream_rewrite
 from deaiify.services.styles import get_style
 
@@ -55,26 +54,6 @@ async def _record_history(
 async def _prepare(
     req: RewriteRequest, session: AsyncSession | None = None
 ) -> tuple[list[str], int, str, str, Any]:
-    """公共校验：文本/风格/provider/模型；返回 (styles, before_score, lang, model, provider)。"""
-    settings = get_settings()
-    if len(req.text) > settings.max_text_chars:
-        raise ApiError(
-            "invalid_text",
-            f"文本超过 {settings.max_text_chars} 字上限（可通过 DEAIIFY_MAX_TEXT_CHARS 调整）",
-        )
-    # 去重且保序
-    styles: list[str] = list(dict.fromkeys(req.styles))
-    for sid in styles:
-        if get_style(sid) is None:
-            raise ApiError(
-                "invalid_style",
-                f"未知风格 {sid}（可用：natural/concise/academic/business/social）",
-            )
-
-
-async def _prepare(
-    req: RewriteRequest, session: AsyncSession | None = None
-) -> tuple[list[str], int, str, str, Any]:
     """公共校验：文本/风格/provider/模型；返回 (styles, before_score, lang, model, provider)。
 
     供应商解析优先级（docs §6.4 扩展）：请求指定的 DB 配置 > DB 默认配置 > .env。
@@ -94,44 +73,15 @@ async def _prepare(
                 f"未知风格 {sid}（可用：natural/concise/academic/business/social）",
             )
 
-    provider, model = await _resolve_provider(req, settings, session)
+    provider, model = await resolve_model(
+        session,
+        provider_config_id=req.model.provider_config_id,
+        provider=req.model.provider,
+        name=req.model.name,
+        settings=settings,
+    )
     before = analyze(req.text)
     return styles, before.score, before.lang, model, provider
-
-
-async def _resolve_provider(
-    req: RewriteRequest, settings, session: AsyncSession | None
-) -> tuple[Any, str]:
-    """解析 provider 与模型名：UI 里配好的供应商优先于 .env。"""
-    if session is not None:
-        try:
-            from deaiify.services.providers import resolve_for_engine
-
-            resolved = await resolve_for_engine(session, req.model.provider_config_id)
-        except ApiError:
-            raise
-        except Exception:  # noqa: BLE001 - DB 故障时回落 .env，不阻塞改写
-            resolved = None
-        if resolved is not None:
-            kind, api_key, base_url = resolved
-            provider = await asyncio.to_thread(registry.build_from_config, kind, api_key, base_url)
-            model = req.model.name or settings.default_model
-            if not model:
-                raise ApiError(
-                    "model_unavailable",
-                    "未指定模型：在请求 model.name 或环境变量 DEAIIFY_DEFAULT_MODEL 中设置",
-                )
-            return provider, model
-
-    # 回落到 .env 配置（传统路径）
-    provider = await asyncio.to_thread(get_provider, req.model.provider)
-    model = req.model.name or settings.default_model
-    if not model:
-        raise ApiError(
-            "model_unavailable",
-            "未指定模型：在请求 model.name 或环境变量 DEAIIFY_DEFAULT_MODEL 中设置",
-        )
-    return provider, model
 
 
 def _outcomes_to_versions(outcomes) -> list[RewriteVersionOut]:

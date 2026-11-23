@@ -32,6 +32,7 @@ import hashlib
 import hmac
 import os
 import secrets as pysecrets
+import sys
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -58,6 +59,27 @@ def _secret_file() -> Path:
 
 _SECRET_FILE = _secret_file()
 
+
+def _fallback_files() -> list[Path]:
+    """主路径不可写时的备选落点。
+
+    典型场景：容器里代码目录归 root、进程以非 root 运行（`/app` 只读），
+    此时"项目根"写不进去，但 `./data`（compose 挂的卷）、家目录、临时目录
+    通常可写。**必须有一个能真正落盘的落点**——否则重启后已存的 API Key
+    全部解不开（实测踩过，见 docs §14.2）。
+    """
+    candidates = [Path.cwd() / "data", Path.home()]
+    if os.name == "posix":
+        candidates.append(Path("/tmp"))
+    elif os.getenv("TEMP"):
+        candidates.append(Path(os.environ["TEMP"]))
+    return [base / ".deaiify-secret" for base in candidates]
+
+
+# 进程内缓存：写盘失败时也必须稳定，否则同进程里 encrypt 之后立刻 decrypt 都会失败
+_cached_secret: bytes | None = None
+_warned_not_persistent = False
+
 _V2_PREFIX = "v2:"
 _V1_PREFIX = "v1:"
 
@@ -70,22 +92,96 @@ _V1_ITERATIONS = 120_000
 # ============================================================
 
 
+def _read_secret(path: Path) -> bytes | None:
+    """读主密钥文件；不存在或内容过短视为无效。
+
+    两种格式都认：
+    - 新格式：64 个十六进制字符（本函数 `_write_secret` 写的）
+    - 旧格式：32 字节原始二进制（早期版本写的，读到继续用）
+
+    新格式写成十六进制是为了绕开「二进制密钥末尾恰好是 0x0a / 0x20，
+    被 `.strip()` 吃掉」这一类静默错位——实测在测试里真的踩到过。
+    """
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    text = data.strip()
+    if len(text) == 64 and all(c in b"0123456789abcdef" for c in text):
+        try:
+            return bytes.fromhex(text.decode("ascii"))
+        except ValueError:
+            return None
+    return text if len(text) >= 16 else None
+
+
+def _write_secret(path: Path, secret: bytes) -> bool:
+    """原子写入主密钥（先写临时文件再替换，避免并发读到半截文件）。"""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_bytes(secret.hex().encode("ascii"))
+        if os.name == "posix":
+            tmp.chmod(0o600)
+        tmp.replace(path)
+        return True
+    except OSError:
+        return False
+
+
 def _master_secret() -> bytes:
-    """主密钥：优先环境变量，其次仓库根的 .deaiify-secret（首次自动生成）。"""
+    """主密钥：优先环境变量，其次落盘文件（首次自动生成）。
+
+    三级回退，且**进程内缓存在最外层**：
+
+    1. `DEAIIFY_SECRET_KEY` 环境变量（生产推荐：显式给定，换机器也能解）
+    2. 主路径 `_SECRET_FILE`（源码树/仓库根，本地开发就是这样）
+    3. 备选路径 `_fallback_files()`（容器里 `/app` 只读时落到 `/app/data`）
+
+    三者都不行时用进程内随机密钥——但此时**同进程内一致、重启即失效**，
+    并且会在 stderr 打一次告警，绝不静默。此前"每次都取新随机密钥"的
+    写法会让刚保存的 API Key 立刻解不开（`has_key: false`），已在
+    docs §14.2 记录为真实 bug。
+    """
+    global _cached_secret, _warned_not_persistent
+
     env = os.getenv("DEAIIFY_SECRET_KEY")
     if env:
         return env.encode("utf-8")
-    if _SECRET_FILE.exists():
-        return _SECRET_FILE.read_bytes().strip()
+
+    if _cached_secret is not None:
+        return _cached_secret
+
+    existing = _read_secret(_SECRET_FILE)
+    if existing is not None:
+        _cached_secret = existing
+        return _cached_secret
+
     secret = pysecrets.token_bytes(32)
-    try:
-        _SECRET_FILE.write_bytes(secret)
-        if os.name == "posix":
-            _SECRET_FILE.chmod(0o600)
-    except OSError:
-        # 不可写时退回进程内随机（重启后旧密文不可解，属可接受的降级）
-        return secret
-    return secret
+
+    for path in [_SECRET_FILE, *_fallback_files()]:
+        if _write_secret(path, secret):
+            _cached_secret = secret
+            if path != _SECRET_FILE and not _warned_not_persistent:
+                _warned_not_persistent = True
+                print(
+                    f"[deaiify] 主密钥无法写入 {_SECRET_FILE}（目录不可写），"
+                    f"已改存 {path}。建议设 DEAIIFY_SECRET_FILE 指向可持久化目录。",
+                    file=sys.stderr,
+                )
+            return _cached_secret
+
+    # 全都不行：至少保证进程内稳定，否则一次请求内都解不开同一个 key
+    _cached_secret = secret
+    if not _warned_not_persistent:
+        _warned_not_persistent = True
+        print(
+            "[deaiify] 主密钥无处可写，已退回进程内随机值：重启后已保存的"
+            "供应商 API Key 将全部失效。请设置 DEAIIFY_SECRET_KEY 或 "
+            "DEAIIFY_SECRET_FILE。",
+            file=sys.stderr,
+        )
+    return _cached_secret
 
 
 def _fernet() -> Fernet:

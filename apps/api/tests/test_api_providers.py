@@ -181,3 +181,92 @@ def test_mask_helper() -> None:
     assert crypto.mask("sk-1234567890abcdef") == "sk-1***********cdef"  # 16 字符 → 中间 8 个星号
     assert crypto.mask("short") == "*****"
     assert crypto.mask("") == ""
+
+
+# ------------------------------------------------------------
+# 主密钥落点与稳定性（Docker 真实 bug 回归，docs §14.2）
+# ------------------------------------------------------------
+
+
+def test_master_secret_stable_within_process(monkeypatch) -> None:
+    """同一进程内多次取主密钥必须一致——否则刚加密的 key 立刻解不开。
+
+    历史 bug：写盘失败时每次 `_master_secret()` 都新生成随机值，
+    导致 `encrypt` 之后马上 `decrypt` 都拿不回明文（容器里实测踩过）。
+    """
+    monkeypatch.delenv("DEAIIFY_SECRET_KEY", raising=False)
+    monkeypatch.setattr(crypto, "_cached_secret", None)
+    monkeypatch.setattr(crypto, "_SECRET_FILE", _tmp() / "primary")
+
+    first = crypto._master_secret()
+    second = crypto._master_secret()
+    assert first == second and len(first) == 32
+
+    token = crypto.encrypt("sk-stability")
+    assert crypto.decrypt(token) == "sk-stability"
+
+
+def test_master_secret_falls_back_when_primary_unwritable(monkeypatch) -> None:
+    """主路径写不进（容器里 /app 归 root）时必须落到可写备选，且能持久化。"""
+    monkeypatch.delenv("DEAIIFY_SECRET_KEY", raising=False)
+    monkeypatch.setattr(crypto, "_cached_secret", None)
+    monkeypatch.setattr(crypto, "_warned_not_persistent", False)
+
+    base = _tmp()
+    # 主路径指向一个"目录"，write_bytes 必然失败（IsADirectoryError ⊂ OSError）
+    primary = base / "is-a-dir"
+    primary.mkdir()
+    monkeypatch.setattr(crypto, "_SECRET_FILE", primary)
+
+    fallback = base / "data" / ".deaiify-secret"
+    monkeypatch.setattr(crypto, "_fallback_files", lambda: [fallback])
+
+    secret = crypto._master_secret()
+    assert fallback.exists(), "必须真正落盘到备选路径"
+    assert crypto._read_secret(fallback) == secret
+    # 落盘格式是十六进制，避免二进制密钥末尾恰好是 0x0a 被 strip 吃掉
+    assert len(fallback.read_bytes()) == 64
+
+    # 模拟重启：清掉进程内缓存，应能读回同一个密钥（已存 key 仍可解）
+    token = crypto.encrypt("sk-survives-restart")
+    monkeypatch.setattr(crypto, "_cached_secret", None)
+    monkeypatch.setattr(crypto, "_SECRET_FILE", fallback)
+    assert crypto._master_secret() == secret
+    assert crypto.decrypt(token) == "sk-survives-restart"
+
+
+def test_master_secret_env_wins(monkeypatch) -> None:
+    """显式 DEAIIFY_SECRET_KEY 优先于任何文件（生产部署推荐用法）。"""
+    monkeypatch.setenv("DEAIIFY_SECRET_KEY", "env-master-key-0123456789abcdef")
+    monkeypatch.setattr(crypto, "_cached_secret", None)
+    assert crypto._master_secret() == b"env-master-key-0123456789abcdef"
+
+
+def test_master_secret_survives_total_failure(monkeypatch) -> None:
+    """所有落点都不可写时，进程内仍必须稳定（并打一次告警，绝不静默）。"""
+    monkeypatch.delenv("DEAIIFY_SECRET_KEY", raising=False)
+    monkeypatch.setattr(crypto, "_cached_secret", None)
+    monkeypatch.setattr(crypto, "_warned_not_persistent", False)
+
+    blocked = _tmp() / "blocked-dir"
+    blocked.mkdir()
+    monkeypatch.setattr(crypto, "_SECRET_FILE", blocked)
+    monkeypatch.setattr(crypto, "_fallback_files", lambda: [blocked])
+
+    assert crypto._master_secret() == crypto._master_secret()
+    assert crypto._warned_not_persistent is True, "不可持久化时必须告警"
+    assert crypto.decrypt(crypto.encrypt("sk-in-memory")) == "sk-in-memory"
+
+
+def _tmp() -> "object":
+    """测试用临时目录。
+
+    不能用 pytest 的 tmp_path —— 受限环境下 tempfile.mkdtemp 产出的目录
+    连创建者进程都访问不了（WinError 5），改用普通 mkdir（docs §14 教训）。
+    """
+    import time
+    from pathlib import Path
+
+    path = Path(__file__).parent / "_tmpdata" / "secrets" / f"{time.time_ns()}"
+    path.mkdir(parents=True, exist_ok=True)
+    return path

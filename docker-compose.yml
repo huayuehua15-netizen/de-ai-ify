@@ -74,8 +74,11 @@ services:
       DEAIIFY_OPENAI_BASE_URL: ${DEAIIFY_OPENAI_BASE_URL:-}
       DEAIIFY_ANTHROPIC_API_KEY: ${DEAIIFY_ANTHROPIC_API_KEY:-}
       DEAIIFY_DEFAULT_MODEL: ${DEAIIFY_DEFAULT_MODEL:-}
-      # 密钥加密主密钥：不设则容器内自动生成（重建容器后旧 key 解不开！）
+      # 密钥加密主密钥：留空则容器内自动生成并落盘到 deaiify-data 卷
+      # （重建容器仍可用；删除卷则旧 key 解不开）。多副本/迁移机器时务必显式设置。
       DEAIIFY_SECRET_KEY: ${DEAIIFY_SECRET_KEY:-}
+      # 显式指定主密钥落点（Dockerfile 已设，这里写出便于覆盖与排障）
+      DEAIIFY_SECRET_FILE: ${DEAIIFY_SECRET_FILE:-/app/data/.deaiify-secret}
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
