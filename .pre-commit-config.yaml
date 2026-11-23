@@ -1,0 +1,77 @@
+# 提交前自检（docs §17.1）。
+#
+# ── 设计取舍：只挡「改完忘了」，不跑重型检查 ─────────────────────────
+#
+# 单测、e2e、next build、eslint 全量都在 CI 里跑。把它们塞进 pre-commit
+# 只会有一个结果：太慢（eslint 全量 >5 分钟）→ 大家开始用 `--no-verify` 绕
+# → 连真正有用的检查也一起被绕过。所以这里有三条硬边界：
+#
+#   1. 每个 hook 都必须秒级完成；
+#   2. 只检查**暂存的文件**（pre-commit 默认行为），不做全仓库扫描；
+#   3. 跨平台——本仓库 Windows / macOS / Linux 都有人用，
+#      **不能写 `bash -c`**（Windows 上不一定有 bash）。
+#
+# 真正防的是三类「改完忘了」：
+#   - 明显语法/风格错（ruff 单文件）
+#   - 文件编码不是 UTF-8——见 docs §14.1，这条曾让 CI 卡数小时：
+#     .gitignore 里混进 GBK 字节，hatchling 读它做 VCS 排除时严格按 UTF-8
+#     解码，抛 UnicodeDecodeError，而报错只说「构建后端返回错误」
+#   - 提交信息格式（Conventional Commits，见 CONTRIBUTING.md）
+#
+# 安装：`uv tool install pre-commit && pre-commit install`
+# 手动全跑：`pre-commit run --all-files`
+
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
+
+repos:
+  # ── 通用卫生 ─────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: check-merge-conflict
+      - id: check-json
+      - id: check-toml
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+        # GitHub Actions 的 `on:` 会被 PyYAML 解析成布尔 True，跳过更省事
+        exclude: ^\.github/workflows/
+      - id: end-of-file-fixer
+        exclude: \.(ico|png|jpg|jpeg|gif|webp|woff2?)$
+      - id: trailing-whitespace
+        exclude: \.(ico|png|jpg|jpeg|gif|webp|woff2?)$
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+        exclude: \.(ico|png|jpg|jpeg|gif|webp|woff2?)$
+
+  # ── Python：ruff（lint + format，配置见 apps/api/pyproject.toml）──
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.0
+    hooks:
+      - id: ruff
+        args: ["--fix", "--force-exclude"]
+        files: ^apps/api/.*\.py$
+      - id: ruff-format
+        files: ^apps/api/.*\.py$
+
+  # ── 仓库级：UTF-8 编码自检（docs §14.1）──────────────────────────
+  # language: python 而非 system —— 不依赖 PATH 里叫 python 还是 python3，
+  # 直接用 pre-commit 自己的解释器，三平台一致。
+  - repo: local
+    hooks:
+      - id: check-encoding
+        name: 被跟踪文件必须是合法 UTF-8
+        entry: python .github/scripts/check_encoding.py
+        language: python
+        pass_filenames: false
+        always_run: true
+
+  # ── 提交信息：Conventional Commits ───────────────────────────────
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.6.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [feat, fix, docs, test, refactor, perf, build, ci, chore, revert, style]
