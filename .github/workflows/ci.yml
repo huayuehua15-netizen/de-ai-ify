@@ -5,12 +5,9 @@ on:
     branches: [main]
   pull_request:
 
-# uv 版本策略：
-#   setup-uv 的 version 默认是 "latest"，意味着上游每次发版都会静默改变我们的构建环境。
-#   2026-11-17 的 uv 0.13.9 上线后，python / api-int 两个 job 的 `uv sync --frozen` 开始失败，
-#   而这两个 job 的输入（apps/api 代码与 uv.lock）一行都没改——纯环境漂移。
-#   因此这里把版本钉死；升级 uv 是一次显式的、需要看 CI 结果的改动。
-#   uv-latest-probe job 会持续用最新版跑一遍，失败只报警不阻塞，用于提前发现下一次漂移。
+# ── uv 版本策略 ───────────────────────────────────────────────────────────────
+# setup-uv 的 `version` 默认是空串 → 落到 "latest"，上游每次发版都会静默改变
+# 我们的构建环境。这里钉死版本，升级 uv 变成一次显式的、需要看 CI 结果的改动。
 env:
   UV_VERSION: "0.13.5"
 
@@ -26,7 +23,10 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           python-version: "3.13"
-      - run: uv sync --frozen
+      # 打印实际生效的版本：钉版本这件事必须能被验证，不能只靠配置写着就算
+      - name: toolchain
+        run: uv --version && python -V && uv python list --only-installed
+      - run: bash ../../.github/scripts/annotate.sh "uv sync --frozen" uv sync --frozen
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
       - run: uv run pytest
@@ -63,13 +63,16 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           python-version: "3.13"
-      - run: uv sync --frozen
+      - name: toolchain
+        run: uv --version && python -V
+      - run: bash ../../.github/scripts/annotate.sh "uv sync --frozen" uv sync --frozen
       - run: uv run pytest
 
   # 环境漂移探针：用最新 uv 跑一次 uv sync --frozen。
-  # 成功 → 说明可以升级 UV_VERSION；失败 → annotation 里能看到真实报错，且因为
-  # continue-on-error 不会把主分支刷红。注意日志接口对无 admin 权限的 token 是 403，
-  # 所以这里把关键输出转成 ::error:: / ::warning:: 写进 check-run annotations。
+  # 成功 → 提示可以升级 UV_VERSION；失败 → annotation 里带真实报错，且因为
+  # continue-on-error 不会把主分支刷红。
+  # 注意：本仓库的 token 无 admin 权限，/actions/jobs/{id}/logs 恒 403，
+  # annotation 是唯一能读到报错的通道（见 .github/scripts/annotate.sh 的说明）。
   uv-latest-probe:
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -81,24 +84,9 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"
-      - name: uv --version
-        run: uv --version
-      - name: uv sync --frozen (latest uv)
-        run: |
-          set +e
-          uv sync --frozen > /tmp/sync.log 2>&1
-          code=$?
-          cat /tmp/sync.log
-          if [ $code -ne 0 ]; then
-            echo "::error::uv sync --frozen failed with latest uv ($(uv --version))"
-            # annotation 单条上限约 64KB，这里只发前 40 行，足够定位
-            head -40 /tmp/sync.log | while IFS= read -r line; do
-              echo "::error::${line}"
-            done
-          else
-            echo "::warning::latest uv ($(uv --version)) works — UV_VERSION can be bumped to it"
-          fi
-          exit $code
+      - name: toolchain
+        run: uv --version && python -V
+      - run: bash ../../.github/scripts/annotate.sh "uv sync --frozen (latest uv)" uv sync --frozen
 
   web:
     runs-on: ubuntu-latest

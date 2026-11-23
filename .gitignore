@@ -64,3 +64,8 @@ _build-*
 
 # 临时提交信息文件
 _commitmsg.txt
+
+# 鏈湴涓存椂鏋勫缓/娴嬭瘯鐩綍
+_uvtest/
+_uvtmp/
+
