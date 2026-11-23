@@ -175,7 +175,7 @@ docker info        # 可选：不通则只用 lite 模式
 | @tanstack/react-query | 5.104.x | 服务端状态 | 请求去重、重试、SSE 集成 |
 | lucide-react | 1.x | 图标 | 开源协议宽松 |
 | vitest | 5.x | 单测 | 与 Vite 生态同构 |
-| @playwright/test | 1.64.x | E2E | 浏览器冒烟 |
+| @playwright/test | 1.65.x | E2E | 浏览器冒烟 |
 
 **不引入**：Redux（react-query 足够）、Monaco（文本框场景过重，v2 再议）。
 
@@ -912,7 +912,7 @@ DEAIIFY_REWRITE_TIMEOUT_S=120
 | 服务层 | pytest-asyncio + respx | 改写流程、质量闸门重试、SSE 事件顺序、模型超时/429/5xx |
 | API 契约 | httpx TestClient | 全端点 schema、错误码、鉴权开关 |
 | 前端单测 | Vitest | sse 解析器、diff 渲染、overlay 对齐纯函数 |
-| E2E 冒烟 | Playwright | 首屏评分与八维、命中联动、overlay 六项排版对齐与滚动同步、万字输入延迟；隐私模式下断言**无原文写库请求** |
+| E2E 冒烟 | Playwright | 首屏评分与八维、命中联动、overlay 六项排版对齐与滚动同步、万字输入延迟、改写全链路（假上游）、**隐私模式下落库无原文** |
 | 性能 | benchmark 脚本 | 1 万字 analyze < 100ms（CI 记录趋势，不做硬门禁） |
 
 ### 13.2 静态质量
@@ -949,9 +949,15 @@ jobs:
 - 版本策略：SemVer；`engine_version` 独立维护（规则变更才算 engine 破坏性变更）；
 - Dependabot：`npm` + `pip` 每月一次。
 - **e2e 为什么不单起一个 job**：它需要的 `pnpm install` + `next build` 已经在 `web`
-  job 里做过了，单起要重付一遍（约 2 分钟）；串在 `web` 末尾只多 35 秒。
-  但 api 与 web 进程要用 `nohup … &` 后台起，并用 curl 轮询到就绪再跑测试
+  job 里做过了，单起要重付一遍（约 2 分钟）；串在 `web` 末尾只多 40 秒。
+  但 api / web / 假上游三个进程要用 `nohup … &` 后台起，并用 curl 轮询到就绪再跑测试
   （裸 `sleep` 在 runner 上不可靠）。
+- **为什么 e2e 里有个假上游**：改写链路（`rewrite.spec.ts`、`privacy.spec.ts` 的落库检查）
+  必须真打一次 HTTP 才能验证 prompt 拼装、SSE 帧序、闸门重算、前端打字机。CI 里
+  既没有也不该有真实模型凭据——跑一次花钱、结果不稳定、还要防泄漏。
+  `.github/scripts/fake_upstream.py` 用标准库 `http.server` 起一个最小 OpenAI 兼容服务
+  （`/v1/models` + `/v1/chat/completions`，含 SSE），用 `[[FAIL]]` 与 `[[SLOW]]` 两个
+  文本标记即可注入 500 与延迟，零依赖、零凭据。
 
 ### 14.1 编码陷阱：`.gitignore` 必须是合法 UTF-8
 
@@ -1112,17 +1118,30 @@ finding 时无条件高亮并 `setSelectionRange(start, end)`，把选区强行�
 - [x] 未配置模型时评分可用、改写有引导；
 - [x] 中文 IME 输入、粘贴万字不卡顿（输入延迟 < 50ms）。
 
-> **实现注记（2026-11-23）**：`apps/web/e2e/` 两个 spec 共 16 例，接进 CI 的 `web` job。
+> **实现注记（2026-11-23）**：`apps/web/e2e/` 四个 spec 共 22 例，接进 CI 的 `web` job。
 >
-> - `smoke.spec.ts`（10 例）：首屏元素齐全 / 粘贴后出总分与八维与命中列表 / 示例文本一键填入 /
+> - `smoke.spec.ts`（11 例）：首屏元素齐全 / 粘贴后出总分与八维与命中列表 / 示例文本一键填入 /
 >   命中卡片与原文高亮联动 / 清空复位 / 全选删除能清空全文 / 五个页面可达（4 例）。
 > - `editor.spec.ts`（6 例）：overlay 六项排版对齐（字号/行高/字距/内边距/字体/换行）、
 >   内容区宽度与滚动条补偿、长文本滚动同步、文字透明度与可见性、
 >   万字输入 p95 < 50ms、超长文本明确提示。
+> - `rewrite.spec.ts`（4 例）：一键改写的完整链路——加载态（按钮文案变「改写中…」）→
+>   版本 Tab 与 gate 徽章 → 采纳进编辑区 → Diff 双栏与增删统计 → 撤销退回原文 →
+>   改写后分数确实下降（闸门真在算）。
+> - `privacy.spec.ts`（2 例）：**落库检查**。跑一次真实 `/rewrite`，然后拉 `/history` 断言
+>   `stored_text` 恒为 null、响应里没有 `text` 字段、整个 JSON 里搜不到原文任何片段，
+>   但有 64 位 SHA256 与长度（可去重、不可还原）。另一例验历史页的说明文案。
+>
+> **假上游**：`.github/scripts/fake_upstream.py`（标准库 http.server，零依赖）提供
+> `/v1/models` 与 `/v1/chat/completions`（含 SSE），用 `[[FAIL]]`/`[[SLOW]]` 标记可注入
+> 500 与延迟。CI 没有、也不该有真实模型凭据（花钱且结果不稳），改写链路必须有这么个东西
+> 才能真打一次 HTTP。`e2e/helpers.ts` 的 `ensureFakeProvider()` 把「建一条指向假上游的
+> 默认供应商」变成幂等的，各 spec 自己调——不依赖 Playwright 的文件执行顺序。
+>
 > - **零浏览器下载**：用 `channel: "chrome"` 复用系统/runner 预装的 Chrome，
 >   `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`，额外依赖只有 18MB JS 包。
 > - CI 里 e2e 单独起 API（`lite` 模式：SQLite + 进程内队列，无需 PG/Redis），
->   `DEAIIFY_RATE_LIMIT_PER_MIN=600`——默认 60 次/分钟会被 16 个用例打爆成 429，
+>   `DEAIIFY_RATE_LIMIT_PER_MIN=600`——默认 60 次/分钟会被 22 个用例打爆成 429，
 >   表现为「评分面板不出现」的假失败（实测 200×51 / 429×24）。
 >
 > **本段修掉的两个真实缺陷**（写 e2e 才暴露）：
@@ -1138,7 +1157,8 @@ finding 时无条件高亮并 `setSelectionRange(start, end)`，把选区强行�
 **验收**：
 - [x] 默认配置下全流程跑完，DB 中 `stored_text` 全为 NULL、无原文行；
 - [x] 关掉隐私开关 → 历史可见 → 一键清除 → DB 抽查无原文；
-- [x] 批量 10 文件、其中 2 个故意失败 → 8 成功 2 失败、刷新进度不丢。
+- [x] 批量 10 段文本、其中 2 段故意失败 → 8 成功 2 失败、刷新进度不丢（API 单批上限 50 条，
+  CLI `deaiify batch` 按目录处理任意文件数）。
 
 > **实现注记（2026-11-23 更新）**：全部完成。
 > - 词库 CRUD/导入导出/内置停用/自定义词条参与评分：`tests/test_api_lexicons.py`（10 例）

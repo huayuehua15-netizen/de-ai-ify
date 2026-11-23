@@ -9,7 +9,11 @@
 
 - 批量任务 `POST /batch` + `GET /batch/{job_id}`（进度持久化、部分失败、刷新恢复、服务重启对账）
 - Web 端 `/batch` 批量页（粘贴多段或选多文件、900ms 轮询、job_id 写进 URL、逐条结果表）
-- Playwright e2e 冒烟 16 例（`apps/web/e2e/`），接进 CI 的 `web` job
+- Playwright e2e 冒烟 22 例（`apps/web/e2e/`），接进 CI 的 `web` job
+- e2e 改写链路：`.github/scripts/fake_upstream.py` 假上游（标准库实现，OpenAI 兼容 + SSE），
+  覆盖「改写 → 采纳 → Diff → 撤销 → 分数下降」全链路，CI 无需任何模型凭据
+- e2e 隐私落库检查：跑真实 `/rewrite` 后断言 `/history` 里 `stored_text` 恒 null、
+  响应无 `text` 字段、全文搜不到原文片段，但有 64 位 SHA256 与长度
 
 ### 修复
 

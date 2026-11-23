@@ -147,6 +147,19 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           python-version: "3.13"
+      # 改写链路必须有模型，CI 又不能有真实凭据（跑一次花钱、结果不稳定）。
+      # 用 .github/scripts/fake_upstream.py 起一个最小 OpenAI 兼容上游：
+      # /v1/models + /v1/chat/completions（含 SSE），无需任何 key。
+      - name: 启动假上游（OpenAI 兼容）
+        run: |
+          nohup python .github/scripts/fake_upstream.py --port 9100 \
+            >"$RUNNER_TEMP/fake.log" 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:9100/v1/models >/dev/null && exit 0
+            sleep 1
+          done
+          echo "假上游未在 30s 内就绪，最后 30 行日志：" && tail -30 "$RUNNER_TEMP/fake.log"
+          exit 1
       - name: 启动 API（lite 模式）
         working-directory: apps/api
         run: |
@@ -171,6 +184,7 @@ jobs:
       - name: e2e
         env:
           E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_FAKE_UPSTREAM: http://127.0.0.1:9100/v1
           ANNOTATE_GREP: '^\s+\d+\) |Error: |expect\(|Locator: |Expected: |Received: '
           ANNOTATE_TAIL: "80"
         run: bash .github/scripts/annotate.sh "playwright" pnpm --filter web exec playwright test
@@ -180,5 +194,6 @@ jobs:
         run: |
           echo "::group::api.log"; tail -80 "$RUNNER_TEMP/api.log" || true; echo "::endgroup::"
           echo "::group::web.log"; tail -80 "$RUNNER_TEMP/web.log" || true; echo "::endgroup::"
+          echo "::group::fake.log"; tail -40 "$RUNNER_TEMP/fake.log" || true; echo "::endgroup::"
 
   # 镜像构建见 .github/workflows/docker.yml
